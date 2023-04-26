@@ -114,9 +114,9 @@ class PreMarshEnv(gym.Env):
         # Define o espaço de observação
         espaco_obs = {
         #'yard':  spaces.Box(low=0, high=self.total_slabs, shape=(2,self.TamanhoPatio, self.TamanhoPilha), dtype=np.int32), #patio self.yard + self.yard_distancia 
-        #'yard':  spaces.Box(low=0, high=self.total_slabs, shape=(self.TamanhoPatio, self.TamanhoPilha), dtype=np.int32), #patio self.yard + self.yard_largura_placas 
+        'yard':  spaces.Box(low=0, high=self.total_slabs+1, shape=(self.TamanhoPatio, self.TamanhoPilha), dtype=np.int32), #patio self.yard + self.yard_largura_placas 
         # 'objetivo' : spaces.Dict(objective_space),
-        # 'objetivo-placas' : spaces.Box(low=1, high=self.total_slabs, shape=(self.objective_size,), dtype=np.int32), #array objetivo
+        'objetivo-placas' : spaces.Box(low=1, high=self.total_slabs, shape=(self.objective_size,), dtype=np.int32), #array objetivo
         'objetivo-distancia' : spaces.Box(low=1, high=self.TamanhoPilha, shape=(self.objective_size,), dtype=np.int32), #distancia
 
         'pilhas-quantidade-placas' : spaces.Box(low=0, high=self.total_slabs, shape=(self.TamanhoPatio,), dtype=np.int32), #pilhas_quantidade_placas
@@ -207,17 +207,27 @@ class PreMarshEnv(gym.Env):
         return self.current_step >= self.max_episode_steps
     
     def renomeiaAmbiente(self):
-        objetivos = ['obj1', 'obj2', 'obj3'] # vetor de objetivos
-        objetivos_renomeados = {id: i+1 for i, id in enumerate(objetivos)}
-        matriz_original = np.array([[0, 'obj1'], [1, 'obj2'], [2, 'obj3'], [3, 'obj1']])
-        matriz_renomeada = np.array([[i, objetivos_renomeados[id]] for i, id in matriz_original])
+        objetivos_renomeados = np.arange(1, self.objective_size+1, 1, dtype=int)
+
+        matriz_original = self.yard
+        matriz_renomeada = np.zeros((self.TamanhoPatio, self.TamanhoPilha), dtype=int)
+        for i in range(self.TamanhoPatio):
+            for j in range(self.TamanhoPilha):
+                if matriz_original[i][j] in self.objective:
+                    index = self.objective.index(matriz_original[i][j])
+                    matriz_renomeada[i][j] = objetivos_renomeados[index]
+                elif matriz_original[i][j] == 0:
+                     matriz_renomeada[i][j] = 0
+                else:
+                    matriz_renomeada[i][j] = self.total_slabs+1
+        self.yard_renamed = matriz_renomeada
+        self.objective_renamed = objetivos_renomeados
 
 
     def _get_obs(self):
 
         self.atualizaQuantitativoPilhas()
         self.renomeiaAmbiente()
-
         # objective_space = {
         #             'placas': self.objective,
         #             'localizacao' : self.localizacao, #localização
@@ -226,9 +236,9 @@ class PreMarshEnv(gym.Env):
 
         spaco_obs = {
             #'yard':  np.stack([self.yard, self.yard_distancia], axis=0), #patio self.yard
-            ##'yard':  self.yard, #patio self.yard
+            'yard':  self.yard_renamed, #patio self.yard
             # 'objetivo' : objective_space, #array objetivo
-            # 'objetivo-placas': self.objective,
+            'objetivo-placas': self.objective_renamed,
             'objetivo-distancia' : self.objetivo_distancia, #distancia
             'pilhas-quantidade-placas' : self.pilhas_quantidade_placas,
             'pilhas-quantidade-placas-objetivo' : self.pilhas_quantidade_placas_do_objetivo,
@@ -272,11 +282,11 @@ class PreMarshEnv(gym.Env):
 
     # Define uma função que converte o dicionário de observação em um array unidimensional
     def dict_to_array(observation):
-        return np.concatenate([#observation["yard"], 
-                # observation["objetivo-placas"], 
+        return np.concatenate([observation["yard"], 
+                observation["objetivo-placas"], 
                 #observation["objetivo-localizacao"], 
-                #observation["objetivo-distancia"],
-                # observation['pilhas-quantidade-placas'],
+                observation["objetivo-distancia"],
+                observation['pilhas-quantidade-placas'],
                 observation['pilhas-quantidade-placas-objetivo'],
                 observation['pilhas-quantidade-placas-objetivo-desbloqueadas'],
                 observation['pilhas-distancia-placas-objetivo'],
@@ -328,7 +338,7 @@ class PreMarshEnv(gym.Env):
 
 
     def __array__(self, dtype=None):
-            return np.concatenate([self.yard.reshape(-1), #self.yard_distancia.reshape(-1),
+            return np.concatenate([self.yard_renamed.reshape(-1), #self.yard_distancia.reshape(-1),
                 self.objective,
                 self.objetivo_distancia,
                 [self.current_step], 
@@ -339,8 +349,8 @@ class PreMarshEnv(gym.Env):
                 ])
     
     def stateDictToArray(self, state):
-        return np.concatenate([#state["yard"].reshape(-1), ##state["yard"][0].reshape(-1),state["yard"][1].reshape(-1),
-                # state["objetivo-placas"],
+        return np.concatenate([state["yard"].reshape(-1), ##state["yard"][0].reshape(-1),state["yard"][1].reshape(-1),
+                state["objetivo-placas"],
                 state["objetivo-distancia"],
                 state['pilhas-quantidade-placas'],
                 state['pilhas-quantidade-placas-objetivo'],
@@ -415,6 +425,7 @@ class PreMarshEnv(gym.Env):
         self.generate_random_map(occupancy)
         self.objective = self.defineObjetivo(objective)
         self.objetivo_distancia = np.zeros(self.objective_size, dtype = int)
+
         self.localizacao, self.distancia = self.atualizaProximidadeTopoNoObjetivo()
 
         self.state = self._get_obs()
@@ -474,7 +485,32 @@ class PreMarshEnv(gym.Env):
                 self.objetivo_distancia[index] = distancia[item]
             index +=1
         return localizacao, distancia
-    
+
+    def distance_from_top(self,matrix):
+        # stacks_i, slabs_j =  np.where((matrix != self.total_slabs+1) & (matrix != 0)) # encontra as linhas e colunas onde os números diferentes de 10 e 0 aparecem
+        indices = np.where((matrix != self.total_slabs+1) & (matrix != 0)) # encontra as linhas e colunas onde os números diferentes de indiferentes (slabs_total+1) e 0 aparecem
+        listOfCoordinates= list(zip(indices[0], indices[1]))
+        distances = np.zeros_like(matrix, dtype=int) # cria um array com a mesma forma da matriz original para armazenar as distâncias
+        # Inicializa um dicionário para armazenar as distâncias relativas de cada item do objetivo em relação ao topo de cada pilha
+        localizacao = {}
+        distancia = {}
+        for cord in listOfCoordinates:
+            x, y = cord[0], cord[1]
+            item = matrix[x][y]
+            localizacao[item] = cord
+            pilhaOrigem = matrix[x]
+            pilhaSemEspacoVazio = pilhaOrigem[pilhaOrigem!=ENDERECO_VAZIO] 
+            topo = len(pilhaSemEspacoVazio)
+            distancia[item] = topo - y
+            distance = 0
+            for j in range(y+1, topo, 1): # percorre as linhas acima do número atual
+                if matrix[x][j] == 0 or matrix[x][j] > matrix[x][y]: # verifica se a posição está vazia ou se há um número maior bloqueando o caminho
+                    distance += 1
+                # else:
+                #     break # para a iteração assim que encontra um número maior bloqueando o caminho
+            distances[x][y] = distance # armazena a distância na posição correspondente do array de distâncias
+        
+        return distances
 
 
     def get_reward2(self, src_stack, dst_stack):
