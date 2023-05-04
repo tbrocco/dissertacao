@@ -49,31 +49,34 @@ def doubleCheck():
     #play.play(env, zoom=3, keys_to_action={"m": np.array([0,0,0])})
 
     # Realiza algumas ações e verifica as observações e recompensas retornadas
-    for _ in range(10):
+    reward_sum = 0
+    for _ in range(20):
         # Escolhe uma ação aleatória
         action = env.action_space.sample()
         
         # Realiza a ação
         obs, reward, done, _ = env.step(action)
-        
+        reward_sum += reward
         # Verifica a observação retornada
-        print("Observação:", obs)
+        #print("Observação:", obs)
         
         # Verifica a recompensa retornada
-        print("Recompensa:", reward)
-        print("Objetivo:", env.objective)
-        print("curr-move", env.current_action)
-        print("Done:", done)
-        print("curr-pilhas_quantidade_placas", env.pilhas_quantidade_placas)
-        print("curr-pilhas_quantidade_placas_do_objetivo", env.pilhas_quantidade_placas_do_objetivo)
-        print("curr-pilhas_quantidade_placas_do_objetivo_desbloqueadas", env.pilhas_quantidade_placas_do_objetivo_desbloqueadas)
-        print("pilhas_distancia_placas_do_objetivo", env.pilhas_distancia_placas_do_objetivo)
-        print("curr-quantidade_placas_do_objetivo_desbloqueadas", env.quantidade_placas_do_objetivo_desbloqueadas)
+        # print("Objetivo:", env.objective)
+        # print("curr-move", env.current_action)
+        # print("curr-pilhas_quantidade_placas", env.pilhas_quantidade_placas)
+        # print("curr-pilhas_quantidade_placas_do_objetivo", env.pilhas_quantidade_placas_do_objetivo)
+        # print("curr-pilhas_quantidade_placas_do_objetivo_desbloqueadas", env.pilhas_quantidade_placas_do_objetivo_desbloqueadas)
+        # print("pilhas_distancia_placas_do_objetivo", env.pilhas_distancia_placas_do_objetivo)
+        # print("curr-quantidade_placas_do_objetivo_desbloqueadas", env.quantidade_placas_do_objetivo_desbloqueadas)
+        env.render(mode='console')
         state = env.stateDictToArray(obs)
+        print(reward)
         print(state)
         print(env.observation_size)
         print(len(state))
         if done == True:
+            print("Recompensa:", reward, reward_sum)
+            reward_sum = 0
             env.reset()
 
 
@@ -104,4 +107,3 @@ def toca_video():
 doubleCheck()
 #grava_video()
 #toca_video()
-
