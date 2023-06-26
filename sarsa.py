@@ -87,5 +87,5 @@ def carrega():
 
         i +=1
 
-treina(1000000)
+treina(20000)
 carrega()

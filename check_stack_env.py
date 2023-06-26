@@ -27,7 +27,6 @@ class CustomWrapper(gym.Wrapper):
 # Cria uma instância do ambiente
 env = CustomWrapper(PreMarshEnv())
 env = PreMarshEnv()
-env.reset()
 
 def check():
     #check
@@ -40,9 +39,14 @@ def doubleCheck():
     print("Espaço de observação:", env.observation_size)
     # Verifica o espaço de observação
     print("Espaço de observação:", env.observation_space)
-
+    print(env.observation_size)
     # Reinicia o ambiente
-    env.reset(1, 0.5,[55, 41, 38, 32, 33] )
+    # state = env.reset(333, 0.5,[55, 41, 38, 32, 33] )
+    state = env.reset(333 )
+    print(env.observation_size)
+    print("ac: ", env.default_occupancy)
+    state = env.stateDictToArray(env.state)
+    print(len(state))
     env.render_mode = "rgb_array"
     env.render_mode = "human"
     print(env.state)
@@ -50,9 +54,9 @@ def doubleCheck():
 
     # Realiza algumas ações e verifica as observações e recompensas retornadas
     reward_sum = 0
-    for _ in range(20):
+    for _ in range(10):
         # Escolhe uma ação aleatória
-        action = env.action_space.sample()
+        action = 77 #env.action_space.sample()
         
         # Realiza a ação
         obs, reward, done, _ = env.step(action)
