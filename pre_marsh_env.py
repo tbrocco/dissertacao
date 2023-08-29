@@ -1,5 +1,6 @@
-import gym
-from gym import spaces
+import gymnasium
+from gymnasium.utils import seeding
+from gymnasium import spaces
 import numpy as np
 import random
 from copy import deepcopy
@@ -7,13 +8,17 @@ import pygame
 #import pygame_textinput
 #from PIL import Image,ImageShow
 
-GAMA = 1
-PARTIAL_WIN_GAME = 8*10
-INVALID_MOVE = -100
+GAMA = 10
+MOVIMENTO_UTIL = 5
+PARTIAL_WIN_GAME = 50
+INVALID_MOVE = -1000
 END_GAME = 0
-WIN_GAME = 1000
+WIN_GAME = 500
+
 ENDERECO_VAZIO = 0
 
+##TODO -> Implementar o numero maximo da placa como infinito
+##TODO -> Enviar a situacao inteira do patio + objetivo
 
 
 def get_key(val, my_dict):
@@ -23,13 +28,13 @@ def get_key(val, my_dict):
  
     return "key doesn't exist"
 
-class PreMarshEnv(gym.Env):
+class PreMarshEnv(gymnasium.Env):
     """Custom Environment that follows gym interface"""
     metadata = {'render.modes': ['human', 'console', 'rgb_array']}
 
-    def __init__(self,num_stacks=8,stack_height = 8, discreeteAction=True,default_occupancy=None, seed=1, max_episode_steps=10):
+    def __init__(self,num_stacks=8,stack_height = 8, discreeteAction=True,default_occupancy=None, max_episode_steps=10, render_mode=None):
         # Define o tamanho da pilha e o número de endereços disponíveis
-        
+        self.render_mode = render_mode
         self.max_episode_steps = int(max_episode_steps)
         self.TamanhoPatio = int(num_stacks) #300
         self.TamanhoPilha = int(stack_height) #11
@@ -47,7 +52,6 @@ class PreMarshEnv(gym.Env):
         self.dones = 0
         self.num_resets = -1
         self.total_slabs = 0
-        self.seed = seed
         self.reward = 0.0
         self.state = np.array([])#[self.TamanhoPatio, self.TamanhoPilha, 2]
         self.yard = []
@@ -59,7 +63,6 @@ class PreMarshEnv(gym.Env):
 
         self.current_step = 0
         self.current_action =(0,0,0)
-        self.action = 0
         # Define a taxa de ocupação padrão (50%)
         if default_occupancy is None:
             default_occupancy = random.choice([0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85])#random.uniform(0.3, 0.85)
@@ -67,6 +70,7 @@ class PreMarshEnv(gym.Env):
         #atualiza o total de placas suportadas no ambiente
         placas_no_ambiente = int(self.TamanhoPatio*self.TamanhoPilha*default_occupancy)
         self.total_slabs = placas_no_ambiente
+        self.total_slabs_max = int(self.TamanhoPatio*self.TamanhoPilha)
         #Tamanho do Objetivo de placas no objetivo 5% do total
         self.objective_size = int(self.TamanhoPatio*self.TamanhoPilha*0.05)
         # localizacação dos objetivo
@@ -85,11 +89,13 @@ class PreMarshEnv(gym.Env):
         discreteAction_max = 0
         endereco = 0
         self.discreeteAction = discreeteAction
+        # self.ACTION_LOOKUP[discreteAction_max] = (0,0,0) #adiciona o movimento "faz nada"
+        # discreteAction_max += 1 #adiciona o movimento "faz nada" 
         while endereco < self.TamanhoPatio:
             enderecodestino =0
             while enderecodestino < self.TamanhoPatio:
                 if endereco != enderecodestino:
-                    for i in range(3):
+                    for i in [0, 1, 2]:
                         self.ACTION_LOOKUP[discreteAction_max] = (endereco,enderecodestino,i)
                         discreteAction_max +=1
                 enderecodestino +=1
@@ -106,7 +112,7 @@ class PreMarshEnv(gym.Env):
             self.action_space = spaces.Tuple((
                 spaces.Discrete(self.TamanhoPatio),  # Endereço de origem da placa
                 spaces.Discrete(self.TamanhoPatio),  # Endereço de destino da placa
-                spaces.Discrete(3)  # Número de placas a serem movidas (1, 2 ou 3)
+                spaces.Discrete(3)  # Número de placas a serem movidas (1, 2 ou 3) - 0 faz nada
             ))
 
         # objective_space = spaces.Dict({
@@ -116,13 +122,13 @@ class PreMarshEnv(gym.Env):
         # })
         # Define o espaço de observação
         espaco_obs = {
-        'yard':  spaces.Box(low=0, high=self.total_slabs, shape=(2,self.TamanhoPatio, self.TamanhoPilha), dtype=np.int32), #patio self.yard + self.yard_distancia 
-        #'yard':  spaces.Box(low=0, high=self.total_slabs+1, shape=(self.TamanhoPatio, self.TamanhoPilha), dtype=np.int32), #patio self.yard + self.yard_largura_placas 
+        #'yard':  spaces.Box(low=0, high=self.total_slabs_max, shape=(2,self.TamanhoPatio, self.TamanhoPilha), dtype=np.int32), #patio self.yard + self.yard_distancia 
+        #'yard':  spaces.Box(low=0, high=self.total_slabs_max, shape=(self.TamanhoPatio, self.TamanhoPilha), dtype=np.int32), #patio self.yard + self.yard_largura_placas 
         # 'objetivo' : spaces.Dict(objective_space),
         #'objetivo-placas' : spaces.Box(low=1, high=self.total_slabs, shape=(self.objective_size,), dtype=np.int32), #array objetivo
         #'objetivo-localizacao-placas' : spaces.Box(low=0, high=self.TamanhoPilha, shape=(self.objective_size,2), dtype=np.int32), #localização
         'objetivo-distancia' : spaces.Box(low=0, high=self.TamanhoPilha, shape=(self.objective_size,2), dtype=np.int32), #distancia
-        'pilhas-quantidade-placas' : spaces.Box(low=0, high=self.total_slabs, shape=(self.TamanhoPatio,), dtype=np.int32), #pilhas_quantidade_placas
+        'pilhas-quantidade-placas' : spaces.Box(low=0, high=self.total_slabs_max, shape=(self.TamanhoPatio,), dtype=np.int32), #pilhas_quantidade_placas
         'pilhas-quantidade-placas-objetivo' : spaces.Box(low=0, high=self.objective_size, shape=(self.TamanhoPatio,), dtype=np.int32), #pilhas_quantidade_placas_do_objetivo
         'pilhas-quantidade-placas-objetivo-desbloqueadas' : spaces.Box(low=0, high=self.objective_size, shape=(self.TamanhoPatio,), dtype=np.int32), #pilhas_quantidade_placas_do_objetivo_desbloqueadas
         'pilhas-distancia-placas-objetivo' : spaces.Box(low=0, high=self.objective_size, shape=(self.TamanhoPatio,), dtype=np.int32), #pilhas_distancia_placas_do_objetivo
@@ -140,13 +146,14 @@ class PreMarshEnv(gym.Env):
 
         self.observation_size = self.get_space_size(self.observation_space)
 
-        # self.reward_maximo = self.objective_size*PARTIAL_WIN_GAME+self.max_episode_steps*GAMA+(self.TamanhoPilha-self.total_slabs)*GAMA+WIN_GAME+1
-        # self.reward_range = (INVALID_MOVE, self.reward_maximo) 
+        self.reward_maximo = self.objective_size*PARTIAL_WIN_GAME+self.max_episode_steps*GAMA+MOVIMENTO_UTIL+self.objective_size*100
+        self.reward_range = (INVALID_MOVE, self.reward_maximo) 
         
     
     def step(self, action):
         self.current_step +=1
-        done = False
+        truncated = False
+        terminated = False
         
         # Obtém os endereços de origem e destino e o número de placas a serem movidas
         if self.discreeteAction == True:
@@ -154,39 +161,52 @@ class PreMarshEnv(gym.Env):
         else:
             # Verifica se a ação é válida
             if not self.action_space.contains(action):
-                self.reward = INVALID_MOVE
-                self.state = self._get_obs()
-                return self.state, self.reward, True, {}
+                self.reward = reward = INVALID_MOVE
+                self.state = observation = self._get_obs()
+                terminated = False
+                truncated = True
+                info = {}
+                return observation, reward, terminated, truncated, info
             self.current_action = action
             action = get_key(action, self.ACTION_LOOKUP)
         src_stack, dst_stack, num_slabs = self.current_action
         
         num_slabs = num_slabs+1
-
+        
         self.moves[self.current_step-1] = action
         #self.moves.append(action)
 
         self.lastmove = self.current_action #to be used for next validation step
         
-        if self.valida(src_stack, dst_stack, num_slabs) == False:
-            self.reward = INVALID_MOVE
-            self.state = self._get_obs()
-            return self.state, self.reward, True, {}
-        
-        self.makeMove(src_stack, dst_stack, num_slabs)
-        #atualiza o self.yard_distancia
+        if num_slabs > 0:
+
+            if self.valida(src_stack, dst_stack, num_slabs) == False:
+                self.reward = reward = INVALID_MOVE
+                self.state = observation = self._get_obs()
+                terminated = False
+                truncated = True
+                info = {}
+                return observation, reward, terminated, truncated, info
+            
+            
+            self.makeMove(src_stack, dst_stack, num_slabs)
+            #atualiza o self.yard_distancia
 
         self.localizacao, self.distancia, self.localizacao_posicao_pilhas = self.atualizaProximidadeTopoNoObjetivo()
-        self.reward = self.get_reward3(src_stack, dst_stack)
+        self.reward = self.get_reward4(src_stack, dst_stack)
+        if self.valida2(src_stack, dst_stack, num_slabs) == False:
+                self.reward -= 50
+
         win = self.verificaObjetivo3()
+        
         if win:
             self.reward += WIN_GAME 
             self.dones += 1
-            done = True
-
+            terminated = True
         ultimo_passo = self._check_if_maxsteps()
         if ultimo_passo:
-            done = True
+            terminated = True
+            truncated = False
 
         info = {}
         # info["objetivo-placas"] = self.objective
@@ -199,10 +219,11 @@ class PreMarshEnv(gym.Env):
         # info["max_steps"] = self.max_episode_steps
         # info["moves"] = self.moves
 
-        reward = self.reward = self.reward
+        reward = self.reward
         self.state = self._get_obs()
         observation = self.state
-        return observation, reward, done, info
+
+        return observation, reward, terminated, truncated, info
     
     # Verifica se atingiu o maximo de passos
     def _check_if_maxsteps(self):
@@ -224,7 +245,7 @@ class PreMarshEnv(gym.Env):
                      matriz_renomeada[i][j] = 0
                      matriz_binaria[i][j] = 0
                 else:
-                    matriz_renomeada[i][j] = self.total_slabs+1
+                    matriz_renomeada[i][j] = self.total_slabs_max+1
                     matriz_binaria[i][j] = 1
         self.yard_renamed = matriz_renomeada
         self.objective_renamed = objetivos_renomeados
@@ -243,8 +264,8 @@ class PreMarshEnv(gym.Env):
         self.transformaLocalizacao()
 
         spaco_obs = {
-            'yard':  np.stack([self.yard_binary, self.yard_renamed], axis=0), #patio self.yard
-            #'yard':  self.yard_binary, #patio self.yard
+            #'yard':  np.stack([self.yard_binary, self.yard_renamed], axis=0), #patio self.yard
+            #'yard':  self.yard_renamed, #patio self.yard
             # 'objetivo' : objective_space, #array objetivo
             #'objetivo-placas': self.objective_renamed,
             #'objetivo-localizacao-placas' : self.objetivo_localizacao_placas, #localização das placas
@@ -282,7 +303,7 @@ class PreMarshEnv(gym.Env):
 
 
     def get_space_size(self,space):
-        if isinstance(space, gym.spaces.Dict):
+        if isinstance(space, gymnasium.spaces.Dict):
             return sum([self.get_space_size(s) for s in space.spaces.values()])
         elif isinstance(space.shape, tuple):
             return np.prod(space.shape)
@@ -292,7 +313,7 @@ class PreMarshEnv(gym.Env):
     # Define uma função que converte o dicionário de observação em um array unidimensional
     def dict_to_array(observation):
         return np.concatenate([
-                observation["yard"], 
+                #observation["yard"], 
                 #observation["objetivo-placas"], 
                 #observation["objetivo-localizacao"], 
                 #observation["objetivo-localizacao-placas"], 
@@ -363,7 +384,7 @@ class PreMarshEnv(gym.Env):
     def stateDictToArray(self, state):
         return np.concatenate([
                 #state["yard"].reshape(-1), 
-                state["yard"][0].reshape(-1),state["yard"][1].reshape(-1),
+                #state["yard"][0].reshape(-1),state["yard"][1].reshape(-1),
                 #state["objetivo-placas"],
                 # state["objetivo-distancia"],
                 #state["objetivo-localizacao-placas"].reshape(-1),
@@ -382,7 +403,6 @@ class PreMarshEnv(gym.Env):
     
 
     def valida(self, src_stack, dst_stack, num_slabs):
-        
         # Verifica se o endereço de origem é válido
         if not (0 <= src_stack < self.TamanhoPatio):
             return False
@@ -402,8 +422,11 @@ class PreMarshEnv(gym.Env):
         # Verifica se a pilha de destino tem espaço suficiente
         if (self.TamanhoPilha - self.get_size(dst_stack)) < num_slabs:
             return False
-        
-
+                        
+        return True
+    
+    def valida2(self, src_stack, dst_stack, num_slabs):
+              
         # Verifica se está realizando o movimento reverso imediatamente apos o ultimo movimento
         last_src_stack, last_dst_stack, last_num_slabs = self.lastmove
         src_stack, dst_stack, num_slabs = self.current_action
@@ -412,41 +435,73 @@ class PreMarshEnv(gym.Env):
                 
         return True
 
-    def reset(self,seed=None, occupancy=None,objective=[]):
+    # def seed(self, seed=None):
+    #     self.np_random, seed = seeding.np_random(seed)
+    #     return [seed]
+    
+    def reset(self, options=None, occupancy=None,objective=[], seed=None):
+        self.stored_seed = seed
+        # We need the following line to seed self.np_random
+        super().reset(seed=seed)
         self.pilhas_quantidade_placas = np.full(self.TamanhoPatio, -1, dtype = int)
         self.pilhas_quantidade_placas_do_objetivo = np.full(self.TamanhoPatio, -1, dtype = int)
         self.pilhas_quantidade_placas_do_objetivo_desbloqueadas = np.full(self.TamanhoPatio, 0, dtype = int)
         self.pilhas_distancia_placas_do_objetivo = np.full(self.TamanhoPatio, -1, dtype = int)
         self.quantidade_placas_do_objetivo_desbloqueadas = 0
+        self.reward = 0.0
         # localizacação dos objetivo
         self.objetivo_localizacao_placas = np.zeros(shape=(self.objective_size, 2), dtype = int)
         self.moves = np.full(self.max_episode_steps, -1, dtype = int)
         self.current_step = 0
         self.num_resets += 1
         self.lastmove = (0,0,0)
-        if seed is not None:
-            self.seed = seed 
-            random.seed(self.seed)
-        else:
-            random.seed()
+        # if seed is not None:
+        #     self.seed = seed
+        #     self.seed()
+        #     random.seed(self.seed)
+        # else:
+        #     random.seed()
 
         # Define a taxa de ocupação (usa o padrão se não for especificado)
         if occupancy is None:
             occupancy = self.default_occupancy
 
+        occupancy = self.np_random.choice([0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85])#random.uniform(0.3, 0.85)
+        self.default_occupancy = occupancy
         #atualiza o total de placas suportadas no ambiente
         self.total_slabs = int(self.TamanhoPatio*self.TamanhoPilha*occupancy)
 
-        
-        self.generate_random_map(occupancy)
-        self.objective = self.defineObjetivo(objective)
-        self.objetivo_distancia = np.zeros(shape=(self.objective_size ,2), dtype = int)
 
-        self.localizacao, self.distancia, self.localizacao_posicao_pilhas = self.atualizaProximidadeTopoNoObjetivo()
+        self.generate_random_map(occupancy)
+        self.objetivo_distancia = np.zeros(shape=(self.objective_size ,2), dtype = int)
+            
+        objetivo_valido = venceu = False
+        while not objetivo_valido:
+            self.objective = self.defineObjetivo(objective)
+            self.localizacao, self.distancia, self.localizacao_posicao_pilhas = self.atualizaProximidadeTopoNoObjetivo()
+            venceu = self.verificaObjetivo3()
+            #log
+            arquivo = open('arq01.txt','a')
+            texto = str(venceu) +","+  str(self.stored_seed)
+            arquivo.write('{}\n'.format(texto))
+            arquivo.close()
+            objetivo_valido = not venceu         
+
+
 
         self.state = self._get_obs()
-        return self.state
+        info = self._get_info()
+        return self.state, info
 
+    def _get_info(self):
+        return {
+            "nada": 0
+        }
+
+
+    def close(self):
+        pygame.display.quit()
+        pygame.quit()
 
     def atualizaProximidadeTopoNoObjetivo(self):
         # Inicializa um dicionário para armazenar as distâncias relativas de cada item do objetivo em relação ao topo de cada pilha
@@ -508,16 +563,70 @@ class PreMarshEnv(gym.Env):
 
         return localizacao_patio, distancia, localizacao_posicao_pilha
 
+    def get_reward4(self, src_stack, dst_stack):
+        recompensa_total_objetivo = 0
+        reward_movimento_util = 0
+        recompensa_descontada = (self.max_episode_steps - self.current_step)
+        arraystate = np.array(self.yard)
+
+        sourceSlabStack = arraystate[src_stack]
+        destSlabStack = arraystate[dst_stack]
+
+        sourceIntersection = np.intersect1d(self.objective, sourceSlabStack)
+        destIntersection = np.intersect1d(self.objective, destSlabStack)
+
+        if (len(sourceIntersection) + len(destIntersection)) < 0:
+            reward_movimento_util = 0
+        else:
+            reward_movimento_util = MOVIMENTO_UTIL
+
+        # Inicializa recompensa total
+        reward_final = 0
+    
+        for item in self.objective:
+            indices = np.where(arraystate == item)
+            listOfCoordinates = list(zip(indices[0], indices[1]))
+
+            # Inicializa recompensas específicas para cada objetivo
+            reward_distancia = 0
+            recompensa_completude = 0
+            
+            for cord in listOfCoordinates:
+                reward_distancia += self.TamanhoPilha - self.distancia[item]
+            
+            valor_maximo = self.TamanhoPilha * len(self.objective)
+            porcentagem_completude = (reward_distancia / valor_maximo) * 100
+            recompensa_completude = porcentagem_completude
+            
+            # Calcula recompensa total para o objetivo atual
+            #recompensa_total_objetivo = self.quantidade_placas_do_objetivo_desbloqueadas * GAMA
+            recompensa_total_objetivo += recompensa_completude
+
+        recompensa_total_objetivo += reward_movimento_util
+        recompensa_total_objetivo += recompensa_descontada * GAMA            
+        
+        recompensa_sequencia = 0
+
+        for idx in range(self.quantidade_placas_do_objetivo_desbloqueadas):
+            item = self.objective[idx]
+            if self.distancia[item] == 0:
+                recompensa_sequencia += PARTIAL_WIN_GAME
+
+        recompensa_total_objetivo += recompensa_sequencia
+
+        reward_final = recompensa_total_objetivo
+
+        return reward_final
+
     def get_reward3(self, src_stack, dst_stack):
         # Inicializa um dicionário para armazenar as distâncias relativas de cada item do objetivo em relação ao topo de cada pilha
         ENDERECO_VAZIO = 0
         reward_movimento_util = 0
 
+        #Recompensa por: numero Passos
         recompensa_descontada = (self.max_episode_steps - self.current_step)
 
-         # self.pilhas_quantidade_placas_do_objetivo_desbloqueadas = np.full(self.TamanhoPatio, -1, dtype = int)   
         arraystate  = np.array(self.yard)
-
 
         sourceSlabStack = arraystate[src_stack]
         destSlabStack = arraystate[dst_stack]
@@ -526,30 +635,36 @@ class PreMarshEnv(gym.Env):
         sourceIntersection = np.intersect1d(self.objective, sourceSlabStack)
         destIntersection = np.intersect1d(self.objective, destSlabStack)
 
+        #Recompensa por: Movimento Útil
         if (len(sourceIntersection) + len(destIntersection) )< 0:
-            reward_movimento_util = -1
-        else:
             reward_movimento_util = 0
+        else:
+            reward_movimento_util = 1
         
+        #Recompensa por: percentual de completude
         reward_distancia = 0
         for item in self.objective:
                     indices = np.where(arraystate == item)
                     listOfCoordinates= list(zip(indices[0], indices[1]))
                     for cord in listOfCoordinates:
-                        # reward_distancia += self.pilhas_quantidade_placas[cord[0]]-self.distancia[item]
                         reward_distancia += self.TamanhoPilha-self.distancia[item]
-                  
-        reward_distancia = reward_distancia
+        valor_maximo = self.TamanhoPilha * len(self.objective)  # Valor máximo possível para reward_distancia
+        porcentagem_completude = (reward_distancia / valor_maximo) * 100
+        reward_distancia = porcentagem_completude
+
         reward_final = self.quantidade_placas_do_objetivo_desbloqueadas*PARTIAL_WIN_GAME 
-        reward_final += reward_movimento_util 
-        reward_final += reward_distancia*0.4
+        reward_final += reward_movimento_util
+        reward_final += porcentagem_completude
         reward_final += recompensa_descontada*GAMA
         return reward_final
         
     def defineObjetivo(self, objective):
         if len(objective) == 0:
             objective = []
-            ids = random.sample(range(1, self.total_slabs), self.objective_size)
+            #patio_plano = self.yard.flatten()
+            #self.np_random.shuffle(patio_plano)
+            ids = self.np_random.choice(range(1,self.total_slabs), 3, replace=False)
+            #ids = random.sample(range(1, self.total_slabs), self.objective_size)
             for i in range(self.objective_size):
                 slab = int(ids[i])
                 objective.append(slab)
@@ -565,7 +680,7 @@ class PreMarshEnv(gym.Env):
             slab = i
             incluido = True
             while True:
-                if (self.add_slab(random.randint(0, self.TamanhoPatio-1), slab)):
+                if (self.add_slab(self.np_random.integers(0, self.TamanhoPatio-1), slab)):
                     break
                 else:
                     incluido = False
@@ -685,8 +800,8 @@ class PreMarshEnv(gym.Env):
             return False
         return True
 
-    def render(self, mode='console'):    
-        if (mode=='console'):
+    def render(self):    
+        if (self.render_mode=='console'):
             # print("Resets: ", self.num_resets)
             # print("Objetivo: ", self.objective)
             # print("Reward: ", self.reward)
@@ -695,7 +810,7 @@ class PreMarshEnv(gym.Env):
             # print("Moves: ", self.current_action)
             # print("Dones: ", self.dones)
             print(self.state)
-            
+
             # #print(self.yard) 
             # for i in range(self.TamanhoPatio):
             #     stack_str = ''
@@ -708,11 +823,13 @@ class PreMarshEnv(gym.Env):
             #     stack_str += str([slab for slab in self.yard_distancia[i]]) + ' | '
             #     print(f'Distance {i}: {stack_str}')
         else:
-                    
+            
             # Define RENDER
             square_size = 20
             margin = 5
+            marginleft = 15
             toolbar = 40
+            footer = 30
             colors = {
                 'empty': (255, 255, 255),
                 'slab': (0, 0, 255),
@@ -720,11 +837,11 @@ class PreMarshEnv(gym.Env):
                 'done': (255, 0, 255),
             }
 
-            #yard_state = self.yard
+
             num_stacks = self.TamanhoPatio
             stack_height = self.TamanhoPilha
             screen_width = num_stacks * (square_size + margin) + margin + toolbar
-            screen_height = (stack_height + 1) * (square_size + margin) + margin + toolbar
+            screen_height = (stack_height + 1) * (square_size + margin) + margin + toolbar + footer
 
             pygame.init()
             pygame.font.init()
@@ -750,7 +867,7 @@ class PreMarshEnv(gym.Env):
                     if event.type == pygame.QUIT:
                         pygame.quit()
                         return
-                    if mode == 'human':
+                    if self.render_mode == 'human':
                         
                         # checking if keydown event happened or not
                         if event.type == pygame.KEYDOWN:
@@ -786,15 +903,25 @@ class PreMarshEnv(gym.Env):
 
                 screen.fill((0, 0, 0))
 
+
                 for stack_index in range(num_stacks):
                     stack = self.yard[stack_index]
+                    
+                    #label de coluna
+                    x = marginleft + stack_index * (square_size + margin) + square_size // 2
+                    y = (self.TamanhoPilha + 1) * (square_size + margin) + margin + toolbar
+                    label_text = font.render(str(stack_index), True, text_color)
+                    label_rect = label_text.get_rect(center=(x, y))
+                    screen.blit(label_text, label_rect)
+
+
                     for slab_index in range(len(stack)):
                         slab = stack[slab_index]
-                        
+
                         if int(slab) > 0:
                             color = colors['slab']
-                            x = margin + stack_index * (square_size + margin)
-                            y = margin + (self.TamanhoPilha - slab_index) * (square_size + margin) + toolbar
+                            x = marginleft + stack_index * (square_size + margin)
+                            y = (self.TamanhoPilha - slab_index) * (square_size + margin) + toolbar
                             rect = pygame.draw.rect(screen, color, (x, y, square_size, square_size))
                             if any(x == slab for x in self.objective) :
                                 text = font.render(str(slab), True, text_obj_color)
@@ -803,11 +930,19 @@ class PreMarshEnv(gym.Env):
                             text_rect = text.get_rect(center=rect.center)
                             screen.blit(text, text_rect)
 
-                    for i in range(len(stack), self.TamanhoPilha):
-                        color = colors['empty']
-                        x = margin + stack_index * (square_size + margin)
-                        y = margin + (self.TamanhoPilha - i - 1) * (square_size + margin)
-                        pygame.draw.rect(screen, color, (x, y, square_size, square_size))
+                for row_index in range(self.TamanhoPilha):
+                    #label de linha
+                    x = marginleft // 2
+                    y = (self.TamanhoPilha - row_index) * (square_size + margin) + square_size // 2 + toolbar
+                    label_text = font.render(str(row_index), True, text_color)
+                    label_rect = label_text.get_rect(center=(x, y))
+                    screen.blit(label_text, label_rect)
+
+                    # for i in range(len(stack), self.TamanhoPilha):
+                    #     color = colors['empty']
+                    #     x = margin + stack_index * (square_size + margin)
+                    #     y = margin + (self.TamanhoPilha - i - 1) * (square_size + margin)
+                    #     pygame.draw.rect(screen, color, (x, y, square_size, square_size))
                 if fim:
                     color = colors['empty']
                     text_obj_color = colors['empty']
@@ -820,13 +955,17 @@ class PreMarshEnv(gym.Env):
                 
                 # text_input.update(pygame.event.get())
                 # # Desenha a caixa de texto na tela
-                texto_explicativo = "Objetivo:"
+                texto_explicativo = "SEED:"
+                texto_explicativo += str(self.stored_seed)
+                texto_explicativo += "Objetivo:"
                 texto_explicativo += str(self.objective)
                 text = font.render(str(texto_explicativo), True, text_color)
                 text_rect = text.get_rect(center=(100,5))
                 screen.blit(text, text_rect)
-                texto_explicativo = "Move:"
-                texto_explicativo += str(self.action)
+                texto_explicativo = "Step: "
+                texto_explicativo += str(self.current_step)
+                texto_explicativo += "Move: "
+                texto_explicativo += str(self.current_action)
                 text = font.render(str(texto_explicativo), True, text_color)
                 text_rect = text.get_rect(center=(100,20))
                 screen.blit(text, text_rect)
@@ -838,12 +977,9 @@ class PreMarshEnv(gym.Env):
                 pygame.display.flip()
                 pygame.display.update()
                 clock.tick(30)
-                if mode == "rgb_array":
+                if self.render_mode == "rgb_array":
                     array = pygame.surfarray.array3d(screen)
                     array = np.flip(array, axis=1)
                     return np.rot90(array, k=1)
-                    break
                 
-            pygame.quit()
-        
         return None

@@ -1,12 +1,12 @@
-import gym
+import gymnasium as gym
 from pre_marsh_env import PreMarshEnv
 import numpy as np
-from gym.utils import play 
+from gymnasium.utils import play 
 #check
-from gym.utils.env_checker import check_env
-from gym import spaces
-from gym.wrappers import Monitor
-from gym.wrappers.monitor import load_results
+from gymnasium.utils.env_checker import check_env
+from gymnasium import spaces
+from gymnasium.wrappers import monitoring
+from gymnasium.wrappers.monitoring import load_results
 
 
 class CustomWrapper(gym.Wrapper):
@@ -111,3 +111,4 @@ def toca_video():
 doubleCheck()
 #grava_video()
 #toca_video()
+
