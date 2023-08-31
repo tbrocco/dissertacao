@@ -67,7 +67,7 @@ env_params = [
 def treina(passos, tipo):
     #env = PreMarshEnv()
     # env.reset()
-    env = CustomWrapper(PreMarshEnv(8,8,True, default_occupancy=0.5))
+    env = CustomWrapper(PreMarshEnv(8,8,True))
 
 
     # env = gymnasium.vector.SyncVectorEnv([
@@ -112,22 +112,6 @@ def treina(passos, tipo):
     
     model.save(nome_modelo)
 
-    # # Define o modelo DQN
-    # model = DQN('MlpPolicy',env, 
-    #             learning_rate=1e-3, buffer_size=10000, batch_size=64, 
-    #             learning_starts=1000, train_freq=4, target_update_interval=1000, 
-    #             exploration_fraction=0.1, exploration_final_eps=0.1, verbose=1, 
-    #             device='cuda')
-
-    # # Treina o modelo por 1000000 de steps
-    # model.learn(total_timesteps=passos, callback=checkpoint_callback, progress_bar=True, )
-
-    # Avalia o modelo
-    #mean_reward, std_reward = evaluate_policy(model, env, n_eval_episodes=10)
-    #print(f"Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
-        
-    del model # remove to demonstrate saving and loading    
-
 def carrega(tipo, avalia=False):
     nome_modelo = "C:/temporario/modeloIA/yard_model_" + tipo
     if tipo == "dqn":
@@ -147,8 +131,8 @@ def carrega(tipo, avalia=False):
     env.render()
 
     if (avalia==True) : 
-        mean_reward, std_reward = evaluate_policy(model, env, render=True, n_eval_episodes=50)
-        print(f"Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
+        mean_reward, std_reward = evaluate_policy(model, env, render=False, n_eval_episodes=10)
+        print(f"{tipo}: - Mean reward: {mean_reward:.2f} +/- {std_reward:.2f}")
     else:
         i = 0
         while i < 3:
@@ -205,7 +189,8 @@ def render_episode(env, tipo):
     done = False
     while not done:
       
-        # Executa uma ação no ambiente
+        # Exe
+        # ta uma ação no ambiente
         #action = env.action_space.sample()
         action, _ = model.predict(obs, deterministic=True)
 
@@ -249,12 +234,10 @@ def renderizaImagens(tipo):
     # Fecha o ambiente
     env.close()
 
-
-
-treina(500000, "dqn")
-treina(500000, "PPO")
-carrega("PPO")
-carrega("dqn")
+#treina(1000000, "dqn")
+#treina(1000000, "PPO")
+carrega("PPO", True)
+carrega("dqn", True)
 renderizaImagens("PPO")
 renderizaImagens("dqn")
-#--python -m trace --trace YOURSCRIPT.py
+

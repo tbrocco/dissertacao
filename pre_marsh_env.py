@@ -9,13 +9,16 @@ import pygame
 #from PIL import Image,ImageShow
 
 GAMA = 10
-MOVIMENTO_UTIL = 5
-PARTIAL_WIN_GAME = 50
-INVALID_MOVE = -1000
-END_GAME = 0
-WIN_GAME = 500
+STEP_REWARD = -10
+MOVIMENTO_UTIL = 0.5
+MOVIMENTO_INUTIL = 0
+PARTIAL_WIN_GAME = 8
+INVALID_MOVE = -100
+INVALID_MOVE_2 = -10
+INVALID_MOVE_3 = 0
+WIN_GAME = 100
 
-ENDERECO_VAZIO = 0
+ENDERECO_VAZIO = -np.inf
 
 ##TODO -> Implementar o numero maximo da placa como infinito
 ##TODO -> Enviar a situacao inteira do patio + objetivo
@@ -65,7 +68,7 @@ class PreMarshEnv(gymnasium.Env):
         self.current_action =(0,0,0)
         # Define a taxa de ocupação padrão (50%)
         if default_occupancy is None:
-            default_occupancy = random.choice([0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85])#random.uniform(0.3, 0.85)
+            default_occupancy = random.choice([0.3, 0.5, 0.7])#random.uniform(0.3, 0.85)
         self.default_occupancy = default_occupancy
         #atualiza o total de placas suportadas no ambiente
         placas_no_ambiente = int(self.TamanhoPatio*self.TamanhoPilha*default_occupancy)
@@ -188,14 +191,18 @@ class PreMarshEnv(gymnasium.Env):
                 info = {}
                 return observation, reward, terminated, truncated, info
             
-            
-            self.makeMove(src_stack, dst_stack, num_slabs)
-            #atualiza o self.yard_distancia
-
+            if self.valida2(src_stack, dst_stack, num_slabs) == True:
+                self.makeMove(src_stack, dst_stack, num_slabs)
+                
+        #atualiza o self.yard_distancia
         self.localizacao, self.distancia, self.localizacao_posicao_pilhas = self.atualizaProximidadeTopoNoObjetivo()
         self.reward = self.get_reward4(src_stack, dst_stack)
+
         if self.valida2(src_stack, dst_stack, num_slabs) == False:
-                self.reward -= 50
+            self.reward += INVALID_MOVE_2
+        if self.valida3(src_stack, dst_stack, num_slabs) == False:
+            self.reward += INVALID_MOVE_3
+
 
         win = self.verificaObjetivo3()
         
@@ -235,17 +242,19 @@ class PreMarshEnv(gymnasium.Env):
         matriz_original = self.yard
         matriz_binaria = np.zeros((self.TamanhoPatio, self.TamanhoPilha), dtype=int)
         matriz_renomeada = np.zeros((self.TamanhoPatio, self.TamanhoPilha), dtype=int)
+        matriz_renomeada = np.full((self.TamanhoPatio, self.TamanhoPilha), ENDERECO_VAZIO, dtype=float)
+        
         for i in range(self.TamanhoPatio):
             for j in range(self.TamanhoPilha):
                 if matriz_original[i][j] in self.objective:
                     index = self.objective.index(matriz_original[i][j])
                     matriz_renomeada[i][j] = objetivos_renomeados[index]
                     matriz_binaria[i][j] = 1
-                elif matriz_original[i][j] == 0:
-                     matriz_renomeada[i][j] = 0
+                elif matriz_original[i][j] == ENDERECO_VAZIO:
+                     matriz_renomeada[i][j] = ENDERECO_VAZIO
                      matriz_binaria[i][j] = 0
                 else:
-                    matriz_renomeada[i][j] = self.total_slabs_max+1
+                    matriz_renomeada[i][j] = np.inf #self.total_slabs_max+1
                     matriz_binaria[i][j] = 1
         self.yard_renamed = matriz_renomeada
         self.objective_renamed = objetivos_renomeados
@@ -296,7 +305,7 @@ class PreMarshEnv(gymnasium.Env):
             for j in range(self.TamanhoPilha):
                 if (self.yard[i][j] in self.objective):
                     objetivos+=1 
-                if not (self.yard[i][j] == 0 ):
+                if not (self.yard[i][j] == ENDERECO_VAZIO ):
                     quantidade_placas += 1   
             self.pilhas_quantidade_placas[i] = quantidade_placas
             self.pilhas_quantidade_placas_do_objetivo[i] = objetivos
@@ -414,7 +423,11 @@ class PreMarshEnv(gymnasium.Env):
         # Verifica se o endereço de destino é válido
         if src_stack == dst_stack:
             return False 
-
+                        
+        return True
+    
+    def valida2(self, src_stack, dst_stack, num_slabs):
+        
         # Verifica se há placas suficientes na pilha de origem
         if self.is_empty(src_stack) or (self.get_size(src_stack)) < num_slabs:
                 return False
@@ -422,11 +435,11 @@ class PreMarshEnv(gymnasium.Env):
         # Verifica se a pilha de destino tem espaço suficiente
         if (self.TamanhoPilha - self.get_size(dst_stack)) < num_slabs:
             return False
-                        
+                
         return True
-    
-    def valida2(self, src_stack, dst_stack, num_slabs):
-              
+
+    def valida3(self, src_stack, dst_stack, num_slabs):
+        
         # Verifica se está realizando o movimento reverso imediatamente apos o ultimo movimento
         last_src_stack, last_dst_stack, last_num_slabs = self.lastmove
         src_stack, dst_stack, num_slabs = self.current_action
@@ -466,7 +479,10 @@ class PreMarshEnv(gymnasium.Env):
         if occupancy is None:
             occupancy = self.default_occupancy
 
-        occupancy = self.np_random.choice([0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85])#random.uniform(0.3, 0.85)
+        if occupancy is None:
+            #occupancy = self.np_random.choice([0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85])#random.uniform(0.3, 0.85)
+            occupancy = self.np_random.choice([0.3, 0.5, 0.7])#random.uniform(0.3, 0.85)
+        
         self.default_occupancy = occupancy
         #atualiza o total de placas suportadas no ambiente
         self.total_slabs = int(self.TamanhoPatio*self.TamanhoPilha*occupancy)
@@ -481,10 +497,10 @@ class PreMarshEnv(gymnasium.Env):
             self.localizacao, self.distancia, self.localizacao_posicao_pilhas = self.atualizaProximidadeTopoNoObjetivo()
             venceu = self.verificaObjetivo3()
             #log
-            arquivo = open('arq01.txt','a')
-            texto = str(venceu) +","+  str(self.stored_seed)
-            arquivo.write('{}\n'.format(texto))
-            arquivo.close()
+            # arquivo = open('arq01.txt','a')
+            # texto = str(venceu) +","+  str(self.stored_seed)
+            # arquivo.write('{}\n'.format(texto))
+            # arquivo.close()
             objetivo_valido = not venceu         
 
 
@@ -530,11 +546,6 @@ class PreMarshEnv(gymnasium.Env):
 
                 indices_posicao_pilha = np.where(pilhaSemEspacoVazio == item)
                 localizacao_posicao_pilha[item] = (cord[0], int(indices_posicao_pilha[0]))
-
-                #if (distancia[item] == 0):
-                #self.yard_distancia[cord[0], cord[1]] = distancia[item]
-                #else:
-                #    soma_da_proximidade_do_topo_dos_objetivos += (self.TamanhoPilha - distancia[item])
                 
             index +=1        
 
@@ -576,7 +587,7 @@ class PreMarshEnv(gymnasium.Env):
         destIntersection = np.intersect1d(self.objective, destSlabStack)
 
         if (len(sourceIntersection) + len(destIntersection)) < 0:
-            reward_movimento_util = 0
+            reward_movimento_util = MOVIMENTO_INUTIL
         else:
             reward_movimento_util = MOVIMENTO_UTIL
 
@@ -603,7 +614,7 @@ class PreMarshEnv(gymnasium.Env):
             recompensa_total_objetivo += recompensa_completude
 
         recompensa_total_objetivo += reward_movimento_util
-        recompensa_total_objetivo += recompensa_descontada * GAMA            
+        recompensa_total_objetivo += self.current_step * STEP_REWARD            
         
         recompensa_sequencia = 0
 
@@ -616,46 +627,6 @@ class PreMarshEnv(gymnasium.Env):
 
         reward_final = recompensa_total_objetivo
 
-        return reward_final
-
-    def get_reward3(self, src_stack, dst_stack):
-        # Inicializa um dicionário para armazenar as distâncias relativas de cada item do objetivo em relação ao topo de cada pilha
-        ENDERECO_VAZIO = 0
-        reward_movimento_util = 0
-
-        #Recompensa por: numero Passos
-        recompensa_descontada = (self.max_episode_steps - self.current_step)
-
-        arraystate  = np.array(self.yard)
-
-        sourceSlabStack = arraystate[src_stack]
-        destSlabStack = arraystate[dst_stack]
-
-        #Usa a função intersect1d para encontrar os elementos comuns aos dois arrays
-        sourceIntersection = np.intersect1d(self.objective, sourceSlabStack)
-        destIntersection = np.intersect1d(self.objective, destSlabStack)
-
-        #Recompensa por: Movimento Útil
-        if (len(sourceIntersection) + len(destIntersection) )< 0:
-            reward_movimento_util = 0
-        else:
-            reward_movimento_util = 1
-        
-        #Recompensa por: percentual de completude
-        reward_distancia = 0
-        for item in self.objective:
-                    indices = np.where(arraystate == item)
-                    listOfCoordinates= list(zip(indices[0], indices[1]))
-                    for cord in listOfCoordinates:
-                        reward_distancia += self.TamanhoPilha-self.distancia[item]
-        valor_maximo = self.TamanhoPilha * len(self.objective)  # Valor máximo possível para reward_distancia
-        porcentagem_completude = (reward_distancia / valor_maximo) * 100
-        reward_distancia = porcentagem_completude
-
-        reward_final = self.quantidade_placas_do_objetivo_desbloqueadas*PARTIAL_WIN_GAME 
-        reward_final += reward_movimento_util
-        reward_final += porcentagem_completude
-        reward_final += recompensa_descontada*GAMA
         return reward_final
         
     def defineObjetivo(self, objective):
@@ -675,6 +646,8 @@ class PreMarshEnv(gymnasium.Env):
 
     def generate_random_map(self, occupancy):
         self.yard = np.zeros((self.TamanhoPatio, self.TamanhoPilha), dtype=np.int32)
+        self.yard = np.full((self.TamanhoPatio, self.TamanhoPilha), ENDERECO_VAZIO, dtype=float)
+        
         #self.yard_distancia = np.zeros((self.TamanhoPatio, self.TamanhoPilha), dtype=np.int32)
         for i in range(1, self.total_slabs+1):
             slab = i
@@ -729,10 +702,9 @@ class PreMarshEnv(gymnasium.Env):
         pilha = self.yard[address_stack]
         pilhaSemEspacoVazio = pilha[pilha!=ENDERECO_VAZIO]
         if len(pilhaSemEspacoVazio) > 0:
-            #self.yard[address_stack].pop()            
             topo = len(pilhaSemEspacoVazio)-1
             slab = self.yard[address_stack][topo]
-            self.yard[address_stack][topo] = 0
+            self.yard[address_stack][topo] = ENDERECO_VAZIO
             return slab
         else:
             #raise Exception("No slab found at address {}".format(address))
@@ -742,7 +714,6 @@ class PreMarshEnv(gymnasium.Env):
         pilha = self.yard[address_stack]
         pilhaSemEspacoVazio = pilha[pilha!=ENDERECO_VAZIO]
         if not self.is_full(address_stack):
-            #self.yard[address_stack].append(slab)
             if (len(pilhaSemEspacoVazio) == 0):
                 pilha[0] = slab #coloca a placa do topo
             else:
@@ -791,7 +762,6 @@ class PreMarshEnv(gymnasium.Env):
         try:
             for _ in range(num_slabs):
                 slab = self.remove_slab(src_stack)
-                #slab = self.yard.remove_slab(src_stack)
                 buffer_slab.append(slab)
 
             for _ in range(num_slabs):
@@ -886,7 +856,8 @@ class PreMarshEnv(gymnasium.Env):
                             if event.key == pygame.K_m:
                                 src_stack, dst_stack, num_slabs = input("Entre com o endereço de origem, destino, e quantidade de placas ").split()
                                 action = int(src_stack), int(dst_stack), int(num_slabs)-1
-                                observation, reward, done, info = self.step(action)  # Execute a ação e receba o resultado
+                                observation, reward, terminated, truncated, info = self.step(action)  # Execute a ação e receba o resultado
+                                done = terminated + truncated
                                 print(f'Reward {reward}')
                                 print(self.state)
                                 if done:
@@ -918,7 +889,7 @@ class PreMarshEnv(gymnasium.Env):
                     for slab_index in range(len(stack)):
                         slab = stack[slab_index]
 
-                        if int(slab) > 0:
+                        if float(slab) > ENDERECO_VAZIO:
                             color = colors['slab']
                             x = marginleft + stack_index * (square_size + margin)
                             y = (self.TamanhoPilha - slab_index) * (square_size + margin) + toolbar
