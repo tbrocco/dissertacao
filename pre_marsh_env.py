@@ -8,15 +8,15 @@ import pygame
 #import pygame_textinput
 #from PIL import Image,ImageShow
 
-GAMA = 10
-STEP_REWARD = -10
+GAMA = 1000
+STEP_REWARD = 1
 MOVIMENTO_UTIL = 0.5
-MOVIMENTO_INUTIL = 0
-PARTIAL_WIN_GAME = 8
-INVALID_MOVE = -100
-INVALID_MOVE_2 = -10
+MOVIMENTO_INUTIL = -0.5
+PARTIAL_WIN_GAME = 10
+INVALID_MOVE = -500
+INVALID_MOVE_2 = -50
 INVALID_MOVE_3 = 0
-WIN_GAME = 100
+WIN_GAME = 0
 
 ENDERECO_VAZIO = -np.inf
 
@@ -35,7 +35,7 @@ class PreMarshEnv(gymnasium.Env):
     """Custom Environment that follows gym interface"""
     metadata = {'render.modes': ['human', 'console', 'rgb_array']}
 
-    def __init__(self,num_stacks=8,stack_height = 8, discreeteAction=True,default_occupancy=None, max_episode_steps=10, render_mode=None):
+    def __init__(self,num_stacks=8,stack_height = 8, discreeteAction=True,default_occupancy=None, max_episode_steps=10, objective_size=None, render_mode=None):
         # Define o tamanho da pilha e o número de endereços disponíveis
         self.render_mode = render_mode
         self.max_episode_steps = int(max_episode_steps)
@@ -75,7 +75,11 @@ class PreMarshEnv(gymnasium.Env):
         self.total_slabs = placas_no_ambiente
         self.total_slabs_max = int(self.TamanhoPatio*self.TamanhoPilha)
         #Tamanho do Objetivo de placas no objetivo 5% do total
-        self.objective_size = int(self.TamanhoPatio*self.TamanhoPilha*0.05)
+        if objective_size is None:
+            self.objective_size = int(self.TamanhoPatio*self.TamanhoPilha*0.018)
+        else:
+            self.objective_size = objective_size
+
         # localizacação dos objetivo
         self.localizacao = {}
         self.localizacao_posicao_pilhas = {}
@@ -149,7 +153,7 @@ class PreMarshEnv(gymnasium.Env):
 
         self.observation_size = self.get_space_size(self.observation_space)
 
-        self.reward_maximo = self.objective_size*PARTIAL_WIN_GAME+self.max_episode_steps*GAMA+MOVIMENTO_UTIL+self.objective_size*100
+        self.reward_maximo = 100+PARTIAL_WIN_GAME+self.max_episode_steps*STEP_REWARD+self.max_episode_steps*MOVIMENTO_UTIL+WIN_GAME+GAMA*self.max_episode_steps
         self.reward_range = (INVALID_MOVE, self.reward_maximo) 
         
     
@@ -207,6 +211,8 @@ class PreMarshEnv(gymnasium.Env):
         win = self.verificaObjetivo3()
         
         if win:
+            recompensa_descontada = (self.max_episode_steps - self.current_step)
+            self.reward += recompensa_descontada*GAMA
             self.reward += WIN_GAME 
             self.dones += 1
             terminated = True
@@ -577,7 +583,6 @@ class PreMarshEnv(gymnasium.Env):
     def get_reward4(self, src_stack, dst_stack):
         recompensa_total_objetivo = 0
         reward_movimento_util = 0
-        recompensa_descontada = (self.max_episode_steps - self.current_step)
         arraystate = np.array(self.yard)
 
         sourceSlabStack = arraystate[src_stack]
@@ -614,14 +619,14 @@ class PreMarshEnv(gymnasium.Env):
             recompensa_total_objetivo += recompensa_completude
 
         recompensa_total_objetivo += reward_movimento_util
-        recompensa_total_objetivo += self.current_step * STEP_REWARD            
+        recompensa_total_objetivo += self.current_step * -1 * STEP_REWARD            
         
         recompensa_sequencia = 0
-
+            
         for idx in range(self.quantidade_placas_do_objetivo_desbloqueadas):
             item = self.objective[idx]
             if self.distancia[item] == 0:
-                recompensa_sequencia += PARTIAL_WIN_GAME
+                recompensa_sequencia += PARTIAL_WIN_GAME / len(self.objective)
 
         recompensa_total_objetivo += recompensa_sequencia
 
@@ -634,7 +639,7 @@ class PreMarshEnv(gymnasium.Env):
             objective = []
             #patio_plano = self.yard.flatten()
             #self.np_random.shuffle(patio_plano)
-            ids = self.np_random.choice(range(1,self.total_slabs), 3, replace=False)
+            ids = self.np_random.choice(range(1,self.total_slabs), self.objective_size, replace=False)
             #ids = random.sample(range(1, self.total_slabs), self.objective_size)
             for i in range(self.objective_size):
                 slab = int(ids[i])

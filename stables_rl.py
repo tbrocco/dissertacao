@@ -64,10 +64,10 @@ env_params = [
     # Adicione mais parâmetros para cada ambiente, se necessário
 ]
 
-def treina(passos, tipo):
+def treina(passos, tipo, env_p):
     #env = PreMarshEnv()
     # env.reset()
-    env = CustomWrapper(PreMarshEnv(8,8,True))
+    env = CustomWrapper(env_p)
 
 
     # env = gymnasium.vector.SyncVectorEnv([
@@ -112,7 +112,7 @@ def treina(passos, tipo):
     
     model.save(nome_modelo)
 
-def carrega(tipo, avalia=False):
+def carrega(tipo, env_p, avalia=False):
     nome_modelo = "C:/temporario/modeloIA/yard_model_" + tipo
     if tipo == "dqn":
         # Carrega o modelo treinado
@@ -123,8 +123,7 @@ def carrega(tipo, avalia=False):
         return print("tipo invalido")
 
     # Cria o ambiente
-    env = CustomWrapper(PreMarshEnv(render_mode='console'))
-
+    env = CustomWrapper(env_p) #PreMarshEnv(render_mode='console'))
     # Executa previsões com o modelo carregado
     obs, info = env.reset()
     #print(obs)
@@ -212,9 +211,10 @@ def render_episode(env, tipo):
     return episode_image
 
 
-def renderizaImagens(tipo):
+def renderizaImagens(tipo, env_p):
     # Crie o ambiente
-    env = CustomWrapper(PreMarshEnv(render_mode='rgb_array'))
+    env = CustomWrapper(env_p) #PreMarshEnv(render_mode='console'))
+    
 
     # Defina aqui o diretório onde as imagens serão salvas
     output_directory = 'output_images'
@@ -234,10 +234,17 @@ def renderizaImagens(tipo):
     # Fecha o ambiente
     env.close()
 
-#treina(1000000, "dqn")
-#treina(1000000, "PPO")
-carrega("PPO", True)
-carrega("dqn", True)
-renderizaImagens("PPO")
-renderizaImagens("dqn")
 
+num_stacks = 8
+stack_height = 8
+max_episode_steps = 10
+env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=10, objective_size=3, render_mode='console')
+treina(1000000, "dqn", env_p=env)
+#treina(1000000, "PPO", env_p=env)
+
+env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=10, objective_size=3, render_mode='console')
+#carrega("PPO", avalia=True, env_p=env)
+carrega(tipo="dqn", avalia=True, env_p=env)
+env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=10,  objective_size=3, render_mode='rgb_array')
+renderizaImagens("dqn", env_p=env)
+#renderizaImagens("PPO", env_p=env)
