@@ -64,7 +64,7 @@ env_params = [
     # Adicione mais parâmetros para cada ambiente, se necessário
 ]
 
-def treina(passos, tipo, env_p):
+def treina(passos, tipo, env_p, file_path="C:/temporario/modeloIA/yard_model_"):
     #env = PreMarshEnv()
     # env.reset()
     env = CustomWrapper(env_p)
@@ -87,20 +87,20 @@ def treina(passos, tipo, env_p):
     #env = make_vec_env(lambda: envs, n_envs=len(env_params))
     #env = make_vec_env(lambda:  CustomWrapper(PreMarshEnv()), n_envs=8 )
 
-    nome_modelo = "C:/temporario/modeloIA/yard_model_" + tipo
-    
+    #nome_modelo = "C:/temporario/modeloIA/yard_model_" + tipo
+    nome_modelo = file_path + tipo
     if tipo == "dqn":
         # Define o modelo DQN
         model = DQN('MlpPolicy',env, 
                     learning_rate=1e-3, buffer_size=10000, batch_size=64, 
                     learning_starts=1000, train_freq=4, target_update_interval=1000, 
-                    exploration_fraction=0.2, exploration_final_eps=0.3, verbose=1
+                    exploration_fraction=0.5, exploration_final_eps=0.3, verbose=1
                     ,device='cuda', tensorboard_log="./yard_tensorboard/"
                     )
         # Cria um callback para salvar o modelo a cada 10000 steps
         checkpoint_callback = CheckpointCallback(save_freq=10000, save_path='./dqn_ckpt', name_prefix='dqn' )
 
-        model.learn(total_timesteps=passos, log_interval=1000, progress_bar=True, tb_log_name="dqn")
+        model.learn(total_timesteps=passos, reset_num_timesteps=18 , log_interval=1000, progress_bar=True, tb_log_name="dqn")
         
     elif tipo == "PPO":
         model = PPO("MlpPolicy", env, verbose=1
@@ -112,8 +112,9 @@ def treina(passos, tipo, env_p):
     
     model.save(nome_modelo)
 
-def carrega(tipo, env_p, avalia=False):
-    nome_modelo = "C:/temporario/modeloIA/yard_model_" + tipo
+def carrega(tipo, env_p, avalia=False, file_path="C:/temporario/modeloIA/yard_model_"):
+    #nome_modelo = "C:/temporario/modeloIA/yard_model_" + tipo
+    nome_modelo = file_path + tipo
     if tipo == "dqn":
         # Carrega o modelo treinado
         model = DQN.load(nome_modelo)
@@ -150,9 +151,10 @@ def carrega(tipo, env_p, avalia=False):
             
     env.close()
 
-def render_episode(env, tipo):
+def render_episode(env, tipo,file_path="C:/temporario/modeloIA/yard_model_"):
 
-    nome_modelo = "C:/temporario/modeloIA/yard_model_" + tipo
+    #nome_modelo = "C:/temporario/modeloIA/yard_model_" + tipo
+    nome_modelo = file_path + tipo
     if tipo == "dqn":
         # Carrega o modelo treinado
         model = DQN.load(nome_modelo)
@@ -211,7 +213,7 @@ def render_episode(env, tipo):
     return episode_image
 
 
-def renderizaImagens(tipo, env_p):
+def renderizaImagens(tipo, env_p,file_path):
     # Crie o ambiente
     env = CustomWrapper(env_p) #PreMarshEnv(render_mode='console'))
     
@@ -224,7 +226,7 @@ def renderizaImagens(tipo, env_p):
 
     for ep_i in range(10):
         # Renderiza o episódio e obtém a imagem concatenada
-        episode_image = render_episode(env, tipo)
+        episode_image = render_episode(env, tipo,file_path)
         #episode_image= np.rot90(episode_image, k=1)
         seed = ep_i
         # Salva a imagem em um arquivo
@@ -234,17 +236,23 @@ def renderizaImagens(tipo, env_p):
     # Fecha o ambiente
     env.close()
 
-
+tipo = "dqn"
+default_occupancy=0.5
 num_stacks = 8
 stack_height = 8
-max_episode_steps = 10
-env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=10, objective_size=3, render_mode='console')
-treina(1000000, "dqn", env_p=env)
-#treina(1000000, "PPO", env_p=env)
+objective_size=3
+optimal_solution = ((int(stack_height/3)+1) * objective_size)
+max_episode_steps = optimal_solution + 1
+#max_episode_steps = 20
+file_path=f"C:/temporario/modeloIA/yard_model_capacity_{default_occupancy}_{objective_size}objetivos_tamanhoDopatio_{num_stacks}x{stack_height}"
 
-env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=10, objective_size=3, render_mode='console')
+env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=max_episode_steps, objective_size=objective_size, default_occupancy=default_occupancy, render_mode='console')
+treina(500000, "dqn", env_p=env, file_path=file_path)
+#treina(1000000, "PPO", env_p=env, file_path=file_path)
+
+env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=max_episode_steps, objective_size=objective_size, default_occupancy=default_occupancy, render_mode='console')
 #carrega("PPO", avalia=True, env_p=env)
-carrega(tipo="dqn", avalia=True, env_p=env)
-env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=10,  objective_size=3, render_mode='rgb_array')
-renderizaImagens("dqn", env_p=env)
+carrega(tipo="dqn", avalia=True, env_p=env, file_path=file_path)
+env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=max_episode_steps,  objective_size=objective_size,default_occupancy=default_occupancy, render_mode='rgb_array')
+renderizaImagens("dqn", env_p=env,file_path=file_path)
 #renderizaImagens("PPO", env_p=env)
