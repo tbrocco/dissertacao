@@ -12,6 +12,8 @@ from gymnasium import spaces
 from pre_marsh_env import PreMarshEnv
 import torch.nn as nn
 from stable_baselines3 import PPO
+from sb3_contrib import QRDQN
+
 
 # import matplotlib
 # matplotlib.use('TkAgg',force=True)
@@ -35,7 +37,7 @@ class CustomWrapper(gymnasium.Wrapper):
         self.env = env
         self.velho = env
         print(env.observation_space)
-        self.observation_space = spaces.Box(0,env.total_slabs_max, shape=(env.observation_size,))
+        self.observation_space = spaces.Box(-np.inf,np.inf, shape=(env.observation_size,))
     def reset(self, seed=None):
         state, info = self.env.reset(seed=seed)
         state = self.env.stateDictToArray(state)
@@ -92,16 +94,19 @@ def treina(passos, tipo, env_p, file_path="C:/temporario/modeloIA/yard_model_"):
     if tipo == "dqn":
         # Define o modelo DQN
         model = DQN('MlpPolicy',env, 
-                    learning_rate=1e-3, buffer_size=10000, batch_size=64, 
-                    learning_starts=1000, train_freq=4, target_update_interval=1000, 
-                    exploration_fraction=0.5, exploration_final_eps=0.3, verbose=1
+                    learning_rate=1e-3, buffer_size=131072, batch_size=256, 
+                    learning_starts=1000, train_freq=4, target_update_interval=8, 
+                    exploration_fraction=0.7, exploration_final_eps=0.3, verbose=1
                     ,device='cuda', tensorboard_log="./yard_tensorboard/"
                     )
         # Cria um callback para salvar o modelo a cada 10000 steps
         checkpoint_callback = CheckpointCallback(save_freq=10000, save_path='./dqn_ckpt', name_prefix='dqn' )
 
-        model.learn(total_timesteps=passos, reset_num_timesteps=18 , log_interval=1000, progress_bar=True, tb_log_name="dqn")
-        
+        model.learn(total_timesteps=passos, reset_num_timesteps=100 , log_interval=1000, progress_bar=True, tb_log_name="dqn")
+    elif tipo == "QRDQN":
+        policy_kwargs = dict(n_quantiles=50)
+        model = QRDQN("MlpPolicy", env, policy_kwargs=policy_kwargs, verbose=1 ,device='cuda', tensorboard_log="./yard_tensorboard/", target_update_interval=8, batch_size=256, buffer_size=131072)
+        model.learn(total_timesteps=passos, reset_num_timesteps=100 , log_interval=1000, progress_bar=True, tb_log_name="QRDQN")
     elif tipo == "PPO":
         model = PPO("MlpPolicy", env, verbose=1
                     , device="cuda", batch_size=64
@@ -118,6 +123,9 @@ def carrega(tipo, env_p, avalia=False, file_path="C:/temporario/modeloIA/yard_mo
     if tipo == "dqn":
         # Carrega o modelo treinado
         model = DQN.load(nome_modelo)
+    elif tipo == "QRDQN":
+        # Carrega o modelo treinado
+        model = QRDQN.load(nome_modelo)
     elif tipo == "PPO":
         model = PPO.load(nome_modelo)
     else:
@@ -158,6 +166,9 @@ def render_episode(env, tipo,file_path="C:/temporario/modeloIA/yard_model_"):
     if tipo == "dqn":
         # Carrega o modelo treinado
         model = DQN.load(nome_modelo)
+    if tipo == "QRDQN":
+        # Carrega o modelo treinado
+        model = QRDQN.load(nome_modelo)
     elif tipo == "PPO":
         model = PPO.load(nome_modelo)
 
@@ -193,7 +204,7 @@ def render_episode(env, tipo,file_path="C:/temporario/modeloIA/yard_model_"):
         # Exe
         # ta uma ação no ambiente
         #action = env.action_space.sample()
-        action, _ = model.predict(obs, deterministic=True)
+        action, _ = model.predict(obs, deterministic=False)
 
         #obs, reward, done, info = env.step(action)
         obs, reward, terminated, truncated, info = env.step(int(action))
@@ -236,23 +247,23 @@ def renderizaImagens(tipo, env_p,file_path):
     # Fecha o ambiente
     env.close()
 
-tipo = "dqn"
-default_occupancy=0.5
+tipo = "dqn" #QRDQN #dqn #PPO                                                                  çpooo0 
+default_occupancy=None
 num_stacks = 8
 stack_height = 8
-objective_size=3
-optimal_solution = ((int(stack_height/3)+1) * objective_size)
+objective_size= 5
+optimal_solution = ((int(stack_height/1)+stack_height) * objective_size)
 max_episode_steps = optimal_solution + 1
-#max_episode_steps = 20
+max_episode_steps = 1000
 file_path=f"C:/temporario/modeloIA/yard_model_capacity_{default_occupancy}_{objective_size}objetivos_tamanhoDopatio_{num_stacks}x{stack_height}"
 
 env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=max_episode_steps, objective_size=objective_size, default_occupancy=default_occupancy, render_mode='console')
-treina(500000, "dqn", env_p=env, file_path=file_path)
+#treina(10000000, tipo, env_p=env, file_path=file_path)
 #treina(1000000, "PPO", env_p=env, file_path=file_path)
 
 env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=max_episode_steps, objective_size=objective_size, default_occupancy=default_occupancy, render_mode='console')
 #carrega("PPO", avalia=True, env_p=env)
-carrega(tipo="dqn", avalia=True, env_p=env, file_path=file_path)
+#carrega(tipo=tipo, avalia=True, env_p=env, file_path=file_path)
 env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=max_episode_steps,  objective_size=objective_size,default_occupancy=default_occupancy, render_mode='rgb_array')
-renderizaImagens("dqn", env_p=env,file_path=file_path)
+renderizaImagens(tipo, env_p=env,file_path=file_path)
 #renderizaImagens("PPO", env_p=env)
