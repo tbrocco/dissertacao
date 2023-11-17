@@ -9,7 +9,7 @@ from stable_baselines3.common.env_util import DummyVecEnv
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.callbacks import EvalCallback
 from gymnasium import spaces
-from pre_marsh_env import PreMarshEnv
+from pre_marsh_env_ok import PreMarshEnv
 import torch.nn as nn
 from stable_baselines3 import PPO
 from sb3_contrib import QRDQN
@@ -54,44 +54,59 @@ class CustomWrapper(gymnasium.Wrapper):
 def create_custom_env(params):
     return CustomWrapper(PreMarshEnv(**params))
 
-# Função para criar uma instância única do ambiente customizado com parâmetros
-# def make_env(num_stacks, stack_height, discreeteAction, max_episode_steps, objective_size, default_occupancy, render_mode):
-#      return CustomWrapper(PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=discreeteAction, max_episode_steps=max_episode_steps, objective_size=objective_size, default_occupancy=default_occupancy, render_mode=render_mode))
-
-# Função para criar uma instância única do ambiente customizado com parâmetros
-def make_env(env_params):
-     return CustomWrapper(PreMarshEnv(**env_params))
+env_params = [
+    {'default_occupancy': 0.3},  # Parâmetros do ambiente 1
+    {'default_occupancy': 0.4},  # Parâmetros do ambiente 2
+    {'default_occupancy': 0.5},  # Parâmetros do ambiente 3
+    {'default_occupancy': 0.6},  # Parâmetros do ambiente 4
+    {'default_occupancy': 0.7},  # Parâmetros do ambiente 5
+    {'default_occupancy': 0.75},  # Parâmetros do ambiente 6
+    {'default_occupancy': 0.8},  # Parâmetros do ambiente 7
+    {'default_occupancy': 0.85}  # Parâmetros do ambiente 8
+    # Adicione mais parâmetros para cada ambiente, se necessário
+]
 
 def treina(passos, tipo, env_p, file_path="C:/temporario/modeloIA/yard_model_"):
     #env = PreMarshEnv()
     # env.reset()
     env = CustomWrapper(env_p)
 
+
+    # env = gymnasium.vector.SyncVectorEnv([
+    #     lambda: CustomWrapper(PreMarshEnv(default_occupancy=0.3)),
+    #     lambda: CustomWrapper(PreMarshEnv(8,8,True, 0.4)),
+    #     lambda: CustomWrapper(PreMarshEnv(8,8,True, 0.5)),
+    #     lambda: CustomWrapper(PreMarshEnv(8,8,True, 0.6)),
+    #     lambda: CustomWrapper(PreMarshEnv(8,8,True, 0.65)),
+    #     lambda: CustomWrapper(PreMarshEnv(8,8,True, 0.7)),
+    #     lambda: CustomWrapper(PreMarshEnv(8,8,True, 0.75)),
+    #     lambda: CustomWrapper(PreMarshEnv(8,8,True, 0.8)),
+    # ])
+
     # # # Cria um ambiente vetorizado com 4 ambientes paralelos
     #envs = [lambda params=params: create_custom_env(params)  for params in env_params]
     # env = make_vec_env(envs, n_envs=len(env_params))
     #env = make_vec_env(lambda: envs, n_envs=len(env_params))
-    #env = make_vec_env(lambda:  CustomWrapper(PreMarshEnv(env_p))), n_envs=8 )
+    #env = make_vec_env(lambda:  CustomWrapper(PreMarshEnv()), n_envs=8 )
 
     #nome_modelo = "C:/temporario/modeloIA/yard_model_" + tipo
     nome_modelo = file_path + tipo
     if tipo == "dqn":
         # Define o modelo DQN
         model = DQN('MlpPolicy',env, 
-                    #learning_rate=1e-3
-                    buffer_size=131072, batch_size=1024, 
-                    learning_starts=1, train_freq=4, target_update_interval=8,
-                    exploration_fraction=0.6, exploration_final_eps=0.2, verbose=1,
-                    device='cuda', tensorboard_log="./yard_tensorboard/"
+                    learning_rate=1e-3, buffer_size=131072, batch_size=256, 
+                    learning_starts=1000, train_freq=4, target_update_interval=8, 
+                    exploration_fraction=0.7, exploration_final_eps=0.3, verbose=1
+                    ,device='cuda', tensorboard_log="./yard_tensorboard/"
                     )
         # Cria um callback para salvar o modelo a cada 10000 steps
         checkpoint_callback = CheckpointCallback(save_freq=10000, save_path='./dqn_ckpt', name_prefix='dqn' )
 
-        model.learn(total_timesteps=passos , log_interval=50, progress_bar=True, tb_log_name="dqn")
+        model.learn(total_timesteps=passos, reset_num_timesteps=100 , log_interval=1000, progress_bar=True, tb_log_name="dqn")
     elif tipo == "QRDQN":
         policy_kwargs = dict(n_quantiles=50)
         model = QRDQN("MlpPolicy", env, policy_kwargs=policy_kwargs, verbose=1 ,device='cuda', tensorboard_log="./yard_tensorboard/", target_update_interval=8, batch_size=256, buffer_size=131072)
-        model.learn(total_timesteps=passos, log_interval=50, progress_bar=True, tb_log_name="QRDQN")
+        model.learn(total_timesteps=passos, reset_num_timesteps=100 , log_interval=1000, progress_bar=True, tb_log_name="QRDQN")
     elif tipo == "PPO":
         model = PPO("MlpPolicy", env, verbose=1
                     , device="cuda", batch_size=64
@@ -232,60 +247,23 @@ def renderizaImagens(tipo, env_p,file_path):
     # Fecha o ambiente
     env.close()
 
-tipo = "dqn" #QRDQN #dqn #PPO                                                                  pooo0 
-#default_occupancy=0.5
-num_stacks = 6
-stack_height = 6
+tipo = "dqn" #QRDQN #dqn #PPO                                                                  çpooo0 
+default_occupancy=None
+num_stacks = 8
+stack_height = 8
 objective_size= 5
 optimal_solution = ((int(stack_height/1)+stack_height) * objective_size)
 max_episode_steps = optimal_solution + 1
 max_episode_steps = 1000
+file_path=f"C:/temporario/modeloIA/yard_model_capacity_{default_occupancy}_{objective_size}objetivos_tamanhoDopatio_{num_stacks}x{stack_height}"
 
-# Parâmetros a serem passados para make_env
-env_params_list = [
-    {
-    'num_stacks': num_stacks,
-    'stack_height': stack_height,
-    'discreeteAction': True,
-    'max_episode_steps': max_episode_steps,
-    'objective_size': objective_size,
- #   'default_occupancy': 0.25,
-    'render_mode': 'console'
-    },
-    {
-    'num_stacks': num_stacks,
-    'stack_height': stack_height,
-    'discreeteAction': True,
-    'max_episode_steps': max_episode_steps,
-    'objective_size': objective_size,
- #   'default_occupancy': 0.5,
-    'render_mode': 'console'
-    },
-    {
-    'num_stacks': num_stacks,
-    'stack_height': stack_height,
-    'discreeteAction': True,
-    'max_episode_steps': max_episode_steps,
-    'objective_size': objective_size,
-  #  'default_occupancy': 0.75,
-    'render_mode': 'console'
-    }    
-]
-
-file_path=f"C:/temporario/modeloIA/yard_model_capacity_{objective_size}objetivos_tamanhoDopatio_{num_stacks}x{stack_height}"
-
-env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=max_episode_steps, objective_size=objective_size, render_mode='console')
-# Crie o ambiente vetorizado usando make_vec_env
-# env_vec = make_vec_env(make_env, n_envs=len(env_params_list), env_kwargs=env_params_list)
-# Crie o ambiente vetorizado usando make_vec_env
-# env_vec = ([lambda: make_env(env_params) for env_params in env_params_list])
-
-treina(300000, tipo, env_p=env, file_path=file_path)
+env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=max_episode_steps, objective_size=objective_size, default_occupancy=default_occupancy, render_mode='console')
+#treina(10000000, tipo, env_p=env, file_path=file_path)
 #treina(1000000, "PPO", env_p=env, file_path=file_path)
 
-env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=max_episode_steps, objective_size=objective_size, render_mode='console')
+env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=max_episode_steps, objective_size=objective_size, default_occupancy=default_occupancy, render_mode='console')
 #carrega("PPO", avalia=True, env_p=env)
-carrega(tipo=tipo, avalia=True, env_p=env, file_path=file_path)
-env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=max_episode_steps,  objective_size=objective_size, render_mode='rgb_array')
+#carrega(tipo=tipo, avalia=True, env_p=env, file_path=file_path)
+env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=max_episode_steps,  objective_size=objective_size,default_occupancy=default_occupancy, render_mode='rgb_array')
 renderizaImagens(tipo, env_p=env,file_path=file_path)
 #renderizaImagens("PPO", env_p=env)

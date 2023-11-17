@@ -37,7 +37,7 @@ def check():
 
 def doubleCheck():
         
-    env = PreMarshEnv(8,8,False, None, 16, 5)
+    env = PreMarshEnv(16,8,False, None, 16, 5)
     env.render_mode='console'
     SEED = 42
     # Verifica o espaço de ação
@@ -59,7 +59,9 @@ def doubleCheck():
 
     # Realiza algumas ações e verifica as observações e recompensas retornadas
     reward_sum = 0
-    for _ in range(10):
+    acoes = []
+    rewards = []
+    for _ in range(20):
         # Escolhe uma ação aleatória
         action = env.action_space.sample()
         
@@ -81,15 +83,17 @@ def doubleCheck():
         state = env.stateDictToArray(obs)
         print(reward)
         print(state)
-        print(env.observation_size)
-        print(len(state))
+        acoes.append(action)
+        rewards.append(reward)
         done = truncated + terminated
         if done == True:
             print("Recompensa:", reward, reward_sum)
             reward_sum = 0
             env.reset()
 
-
+    print("Recompensa:", reward, reward_sum)
+    print("Acoes:", acoes)
+    print("Recompensas:",  rewards)
 # def grava_video():
 #     # envolve o ambiente com o Monitor
 #     gym.logger.set_level(gym.logger.DEBUG)

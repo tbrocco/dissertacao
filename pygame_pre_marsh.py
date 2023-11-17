@@ -9,7 +9,7 @@ from pre_marsh_env import PreMarshEnv
 #32x8
 #64x8
 
-env = PreMarshEnv(8,8,False, None, 16, 5)
+env = PreMarshEnv(4,4,False, 10, 3)
 env.render_mode='human'
 SEED = 42
 i = SEED
@@ -17,5 +17,6 @@ while i<=SEED:
     env.reset(seed=i)
     print(env.state)
     env.render()
+    print(env.distancia)
 
     i+=1
