@@ -79,7 +79,7 @@ def treina(passos, tipo, env_p, file_path="C:/temporario/modeloIA/yard_model_"):
         # Define o modelo DQN
         model = DQN('MlpPolicy',env_p, 
                     #learning_rate=1e-3
-                    buffer_size=131072, batch_size=2048, 
+                    buffer_size=524288, batch_size=8192, 
                     learning_starts=1, train_freq=4, target_update_interval=8,
                     exploration_fraction=0.7, exploration_final_eps=0.2, verbose=1,
                     device='cuda', tensorboard_log="./yard_tensorboard/"
@@ -272,7 +272,7 @@ env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAct
 #vec_env = SubprocVecEnv([make_env(i) for i in range(8)])
 vec_env = DummyVecEnv([lambda: Monitor(create_custom_env(env_params), "./yard_tensorboard") for env_params in env_params_list])
 
-treina(30000000, tipo, env_p=vec_env, file_path=file_path)
+treina(3000000, tipo, env_p=vec_env, file_path=file_path)
 #treina(1000000, "PPO", env_p=env, file_path=file_path)
 
 env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=True, max_episode_steps=max_episode_steps, objective_size=objective_size, render_mode='console')
