@@ -9,9 +9,9 @@ from pre_marsh_env import PreMarshEnv
 #32x8
 #64x8
 
-env = PreMarshEnv(4,4,False, 10, 3)
+env = PreMarshEnv(5,5,False, 10, 4)
 env.render_mode='human'
-SEED = 42
+SEED = 112 #45
 i = SEED
 while i<=SEED:
     env.reset(seed=i)

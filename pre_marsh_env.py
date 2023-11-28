@@ -7,20 +7,20 @@ import pygame
 #import pygame_textinput
 #from PIL import Image,ImageShow
 
-GAMA = 1.5
-STEP_REWARD = 3
+GAMA = 3
+STEP_REWARD = 3.5
 STEP_COST = -0.01
 MOVIMENTO_UTIL = 0.0
-MOVIMENTO_INUTIL = -0.05
-COMPLETUDE_PERCENTUAL = 1
-PARTIAL_WIN_GAME = 1
-PARTIAL_UNLOCK_GAME = 0.1
-INVALID_MOVE = -100
+MOVIMENTO_INUTIL = -0.005
+COMPLETUDE_PERCENTUAL = 0.1
+PARTIAL_WIN_GAME = 0.1
+PARTIAL_UNLOCK_GAME = 0.01
+INVALID_MOVE = -1000
 INVALID_MOVE_21 = -1
 INVALID_MOVE_22 = -1
-INVALID_MOVE_3 = -0.9
-WIN_GAME = 1000
-ENDERECO_VAZIO = 0
+INVALID_MOVE_3 = -1
+WIN_GAME = 100
+ENDERECO_VAZIO = -0.1
 ENDERECO_OCUPADO = 1
 
 ##TODO -> Enviar a situacao inteira do patio + objetivo
@@ -48,6 +48,7 @@ class PreMarshEnv(gymnasium.Env):
         self.TamanhoPilha = int(stack_height) #11
         
         self.pilhas_quantidade_placas = np.full(self.TamanhoPatio, -1, dtype = int)
+        self.pilhas_quantidade_espaco_vazios = np.full(self.TamanhoPatio, -1, dtype = int)
         self.pilhas_quantidade_placas_do_objetivo = np.full(self.TamanhoPatio, -1, dtype = int)
         self.pilhas_quantidade_placas_do_objetivo_desbloqueadas = np.full(self.TamanhoPatio, -1, dtype = int)
         self.pilhas_distancia_placas_do_objetivo = np.full(self.TamanhoPatio, 0, dtype = int)
@@ -108,7 +109,7 @@ class PreMarshEnv(gymnasium.Env):
             enderecodestino =0
             while enderecodestino < self.TamanhoPatio:
                 if endereco != enderecodestino:
-                    for i in [0]:
+                    for i in [0,1,2]:
                         self.ACTION_LOOKUP[discreteAction_max] = (endereco,enderecodestino,i)
                         discreteAction_max +=1
                 enderecodestino +=1
@@ -143,12 +144,14 @@ class PreMarshEnv(gymnasium.Env):
         #'objetivo-localizacao-placas' : spaces.Box(low=0, high=self.TamanhoPilha, shape=(self.objective_size,2), dtype=np.int32), #localização
         #'objetivo-distancia' : spaces.Box(low=0, high=self.TamanhoPilha, shape=(self.objective_size,2), dtype=np.int32), #distancia
         'pilhas-quantidade-placas' : spaces.Box(low=0, high=self.total_slabs_max, shape=(self.TamanhoPatio,), dtype=np.int32), #pilhas_quantidade_placas
-        'pilhas-quantidade-placas-objetivo' : spaces.Box(low=0, high=self.objective_size, shape=(self.TamanhoPatio,), dtype=np.int32), #pilhas_quantidade_placas_do_objetivo
+        # 'pilhas-quantidade-placas-objetivo' : spaces.Box(low=0, high=self.objective_size, shape=(self.TamanhoPatio,), dtype=np.int32), #pilhas_quantidade_placas_do_objetivo
         #'pilhas-quantidade-placas-objetivo-desbloqueadas' : spaces.Box(low=0, high=self.objective_size, shape=(self.TamanhoPatio,), dtype=np.int32), #pilhas_quantidade_placas_do_objetivo_desbloqueadas
-        'pilhas-distancia-placas-objetivo' : spaces.Box(low=0, high=self.objective_size, shape=(self.TamanhoPatio,), dtype=np.int32), #pilhas_distancia_placas_do_objetivo
+        # 'pilhas-distancia-placas-objetivo' : spaces.Box(low=0, high=self.objective_size, shape=(self.TamanhoPatio,), dtype=np.int32), #pilhas_distancia_placas_do_objetivo
         #'objetivo-desbloqueadas' : spaces.Box(low=0, high=self.objective_size, shape=(1,), dtype=np.int32) #quantidade_placas_do_objetivo_desbloqueadas
         #'objetivo-localizacao' : spaces.Box(low=1, high=self.TamanhoPilha, shape=(self.objective_size,2), dtype=np.int32), #localização
-        'objetivo-distancia' : spaces.Box(low=1, high=self.TamanhoPilha, shape=(self.objective_size,), dtype=np.int32), #distancia
+        #'objetivo-distancia' : spaces.Box(low=1, high=self.TamanhoPilha, shape=(self.objective_size,), dtype=np.int32), #distancia
+        'objetivo-distancia' : spaces.Box(low=0, high=self.TamanhoPilha, shape=(self.objective_size,2), dtype=np.int32) #distancia
+        
         #'steps' : spaces.Box(low=0, high=self.max_episode_steps, shape=(1,), dtype=np.int32), #passos
         #'max_steps' : spaces.Box(low=0, high=self.max_episode_steps, shape=(1,), dtype=np.int32), #maximo de passos
         #'TamanhoPatio' : spaces.Box(low=0, high=self.TamanhoPatio, shape=(1,), dtype=np.int32), #tamanho do patio
@@ -201,7 +204,7 @@ class PreMarshEnv(gymnasium.Env):
         
         if num_slabs > 0:
 
-            if self.valida(src_stack, dst_stack, num_slabs) == False:
+            if self.valida_movimento_valido(src_stack, dst_stack, num_slabs) == False:
                 self.reward = reward = INVALID_MOVE
                 self.state = observation = self._get_obs()
                 terminated = False
@@ -224,8 +227,8 @@ class PreMarshEnv(gymnasium.Env):
                         self.reward = INVALID_MOVE_3
                     self.makeMove(src_stack, dst_stack, num_slabs)
                     self.localizacao, self.distancia, self.localizacao_posicao_pilhas = self.atualizaProximidadeTopoNoObjetivo()
-                    if self.reward != INVALID_MOVE_3: #descomentar se for usar a logica
-                        self.reward += self.get_reward4(src_stack, dst_stack, num_slabs)
+                    #if self.reward != INVALID_MOVE_3: #descomentar se for usar a logica
+                    self.reward += self.get_reward8(src_stack, dst_stack, num_slabs)
                 else:
                     truncated = False
                     if not valido2_origem:
@@ -316,19 +319,19 @@ class PreMarshEnv(gymnasium.Env):
 
         spaco_obs = {
             #'yard':  np.stack([self.yard_binary, self.yard_renamed], axis=0), #patio self.yard
-            #'yard':  self.yard_renamed#, #patio self.yard
+            # 'yard':  self.yard_renamed#, #patio self.yard
             #'pilhas-objetivo-yard':  self.pilhas_objective_yard,
             # 'objetivo' : objective_space, #array objetivo
             #'objetivo-placas': self.objective_renamed,
             #'objetivo-localizacao-placas' : self.objetivo_localizacao_placas, #localização das placas
             #'objetivo-distancia' : self.objetivo_distancia, #distancia e pilha
-            'pilhas-quantidade-placas' : self.pilhas_quantidade_placas,
-            'pilhas-quantidade-placas-objetivo' : self.pilhas_quantidade_placas_do_objetivo,
+            'pilhas-quantidade-placas' : self.pilhas_quantidade_espaco_vazios, #self.pilhas_quantidade_placas,
+            #'pilhas-quantidade-placas-objetivo' : self.pilhas_quantidade_placas_do_objetivo,
             # 'pilhas-quantidade-placas-objetivo-desbloqueadas' : self.pilhas_quantidade_placas_do_objetivo_desbloqueadas,
-            'pilhas-distancia-placas-objetivo' : self.pilhas_distancia_placas_do_objetivo,
+            # 'pilhas-distancia-placas-objetivo' : self.pilhas_distancia_placas_do_objetivo,
             #'objetivo-desbloqueadas' : self.quantidade_placas_do_objetivo_desbloqueadas
             #'objetivo-localizacao' : self.localizacao, #localização
-            'objetivo-distancia' : self.objetivo_distancia[:, 1], #distancia 
+            'objetivo-distancia' : self.objetivo_distancia#[:, 1], #distancia 
             #'steps' : self.current_step, #passos
             #'max_steps' : self.max_episode_steps, #maximo de passos
             #'TamanhoPatio' : self.TamanhoPatio, #tamanho do patio
@@ -351,8 +354,9 @@ class PreMarshEnv(gymnasium.Env):
                 if not (self.yard[i][j] == ENDERECO_VAZIO ):
                     quantidade_placas += 1   
             self.pilhas_quantidade_placas[i] = quantidade_placas
+            self.pilhas_quantidade_espaco_vazios[i] = self.TamanhoPilha-quantidade_placas
             self.pilhas_quantidade_placas_do_objetivo[i] = objetivos
-
+        
     def get_space_size(self,space):
         if isinstance(space, gymnasium.spaces.Dict):
             return sum([self.get_space_size(s) for s in space.spaces.values()])
@@ -364,16 +368,16 @@ class PreMarshEnv(gymnasium.Env):
     # Define uma função que converte o dicionário de observação em um array unidimensional
     def dict_to_array(observation):
         return np.concatenate([
-                #observation["yard"] #,
+                # observation["yard"] #,
                 #observation['pilhas-objetivo-yard'],
                 #observation["objetivo-placas"], 
                 #observation["objetivo-localizacao"], 
                 #observation["objetivo-localizacao-placas"], 
                 #observation["objetivo-distancia"],
-                observation['pilhas-quantidade-placas'],
+                #observation['pilhas-quantidade-placas'],
                 observation['pilhas-quantidade-placas-objetivo'],
                 #observation['pilhas-quantidade-placas-objetivo-desbloqueadas'],
-                observation['pilhas-distancia-placas-objetivo'],
+                # observation['pilhas-distancia-placas-objetivo'],
                 #[observation['objetivo-desbloqueadas']]
                 observation["objetivo-distancia"]
                 #[observation["steps"]], 
@@ -385,7 +389,7 @@ class PreMarshEnv(gymnasium.Env):
     
     def stateDictToArray(self, state):
         return np.concatenate([
-                #state["yard"].reshape(-1)#,
+                # state["yard"].reshape(-1)#,
                 #state["yard"][0].reshape(-1),state["yard"][1].reshape(-1),
                 #state['pilhas-objetivo-yard'].reshape(-1),
                 #state["objetivo-placas"],
@@ -393,11 +397,12 @@ class PreMarshEnv(gymnasium.Env):
                 #state["objetivo-localizacao-placas"].reshape(-1),
                 #state["objetivo-distancia"].reshape(-1),
                 state['pilhas-quantidade-placas'],
-                state['pilhas-quantidade-placas-objetivo'],
+                #state['pilhas-quantidade-placas-objetivo'],
                 # state['pilhas-quantidade-placas-objetivo-desbloqueadas'],
-                state['pilhas-distancia-placas-objetivo'],
+                # state['pilhas-distancia-placas-objetivo'],
                 #[state['objetivo-desbloqueadas']]
-                state["objetivo-distancia"]
+                #state["objetivo-distancia"]
+                state["objetivo-distancia"].reshape(-1)
                 #[state["steps"]], 
                 #[state["max_steps"]], 
                 #[state["TamanhoPatio"]], 
@@ -405,8 +410,8 @@ class PreMarshEnv(gymnasium.Env):
                 #[state["moves"]]
                 ])
     
-
-    def valida(self, src_stack, dst_stack, num_slabs):
+    #validacao basica que provavelmente so ocorrera erro quando for ambiente iterativo, pois o automatico possui os limites corretos.
+    def valida_movimento_valido(self, src_stack, dst_stack, num_slabs):
         # Verifica se o endereço de origem é válido
         if not (0 <= src_stack < self.TamanhoPatio):
             return False
@@ -421,6 +426,7 @@ class PreMarshEnv(gymnasium.Env):
                         
         return True
     
+    #valida se a origem possio placa
     def valida2_Origem(self, src_stack, num_slabs):
         delta = 0
         # Verifica se há placas suficientes na pilha de origem
@@ -429,6 +435,7 @@ class PreMarshEnv(gymnasium.Env):
             return False, delta
         return True, delta
 
+    #valida se o destino possui capacidade de receber o numero de placa
     def valida2_Destino(self, dst_stack, num_slabs):
         delta = 0
         # Verifica se a pilha de destino tem espaço suficiente
@@ -438,6 +445,7 @@ class PreMarshEnv(gymnasium.Env):
                 
         return True, delta
 
+    #valida se estou desfazendo o movimento anterior.
     def valida3(self, src_stack, dst_stack, num_slabs):
         
         # Verifica se está realizando o movimento reverso imediatamente apos o ultimo movimento
@@ -448,16 +456,14 @@ class PreMarshEnv(gymnasium.Env):
                 
         return True
 
-    # def seed(self, seed=None):
-    #     self.np_random, seed = seeding.np_random(seed)
-    #     return [seed]
     
     def reset(self, options=None, occupancy=None,objective=[], seed=None):
         self.stored_seed = seed
-        # We need the following line to seed self.np_random
-        
+                
         super().reset(seed=seed)
+        
         self.pilhas_quantidade_placas = np.full(self.TamanhoPatio, -1, dtype = int)
+        self.pilhas_quantidade_espaco_vazios = np.full(self.TamanhoPatio, -1, dtype = int)
         self.pilhas_quantidade_placas_do_objetivo = np.full(self.TamanhoPatio, -1, dtype = int)
         self.pilhas_quantidade_placas_do_objetivo_desbloqueadas = np.full(self.TamanhoPatio, 0, dtype = int)
         self.pilhas_distancia_placas_do_objetivo = np.full(self.TamanhoPatio, -1, dtype = int)
@@ -471,17 +477,10 @@ class PreMarshEnv(gymnasium.Env):
         self.num_resets += 1
         self.lastmove = (0,0,0)
         self.lastaction=-np.inf
-        # if seed is not None:
-        #     self.seed = seed
-        #     self.seed()
-        #     random.seed(self.seed)
-        # else:
-        #     random.seed()
 
         # Define a taxa de ocupação (usa o padrão se não for especificado)
         if occupancy is None:
-            #occupancy = self.np_random.choice([0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85])#random.uniform(0.3, 0.85)
-            occupancy = self.np_random.choice([0.3, 0.5, 0.7])#random.uniform(0.3, 0.85)
+            occupancy = self.np_random.choice([0.3, 0.5, 0.7])
         
         self.default_occupancy = occupancy
         #atualiza o total de placas suportadas no ambiente
@@ -496,13 +495,13 @@ class PreMarshEnv(gymnasium.Env):
             self.objective = self.defineObjetivo(objective)
             self.localizacao, self.distancia, self.localizacao_posicao_pilhas = self.atualizaProximidadeTopoNoObjetivo()
             venceu = self.verificaObjetivo3()
-            #log
+            #log COMENTADO
             # arquivo = open('arq01.txt','a')
             # texto = str(venceu) +","+  str(self.stored_seed)
             # arquivo.write('{}\n'.format(texto))
             # arquivo.close()
+            #log FIM
             objetivo_valido = not venceu         
-
 
         self.last_pilhas_distancia_placas_do_objetivo = self.pilhas_distancia_placas_do_objetivo
         self.state = self._get_obs()
@@ -513,7 +512,6 @@ class PreMarshEnv(gymnasium.Env):
         return {
             #"nada": 0
         }
-
 
     def close(self):
         pygame.display.quit()
@@ -531,7 +529,6 @@ class PreMarshEnv(gymnasium.Env):
 
         self.atualizaQuantitativoPilhas()
         self.renomeiaAmbiente()
-        # self.atualizaPlacasBloqueantes()
         index = 0
 
         for item in self.objective:
@@ -555,7 +552,6 @@ class PreMarshEnv(gymnasium.Env):
         # Substituir os valores -1 por 0
         array_modificado = np.where(self.pilhas_distancia_placas_do_objetivo == -1, 0, self.pilhas_distancia_placas_do_objetivo)
         self.pilhas_distancia_placas_do_objetivo = array_modificado
-
 
         #Atualização das placas de fato, desbloqueadas, verificando se há alguma da sequencia acima, que não bloqueia.
         self.quantidade_placas_do_objetivo_desbloqueadas = 0 
@@ -585,34 +581,6 @@ class PreMarshEnv(gymnasium.Env):
 
         return localizacao_patio, distancia, localizacao_posicao_pilha
 
-    # def atualizaPlacasBloqueantes(self):
-        # Inicializa um dicionário para armazenar os resultados
-        # resultados = {}
-
-        # # Loop sobre cada linha da matriz
-        # for row_index, row in enumerate(data['yard']):
-        #     resultados[f'Linha {row_index + 1}'] = {}
-            
-        #     # Loop sobre cada objetivo
-        #     for objetivo in objetivos:
-        #         # Encontre os índices onde o valor é igual ao objetivo
-        #         indices_objetivo = np.where(row == objetivo)[0]
-                
-        #         # Se houver pelo menos um valor igual ao objetivo na linha
-        #         if indices_objetivo.size > 0:
-        #             # Encontre o índice do último valor igual ao objetivo
-        #             ultimo_indice_objetivo = indices_objetivo[-1]
-                    
-        #             # Conte o número de placas após o último objetivo
-        #             num_placas_apos_objetivo = len(row) - ultimo_indice_objetivo - 1
-                    
-        #             # Armazene o resultado no dicionário
-        #             resultados[f'Linha {row_index + 1}'][f'Objetivo {objetivo}'] = num_placas_apos_objetivo
-
-        # # Imprima os resultados
-        # for linha, objetivos in resultados.items():
-        #     print(f'{linha}: {objetivos}')
-
     #calcula o percentual de completude
     def get_reward4(self, src_stack, dst_stack, num_slabs):
         recompensa_total_objetivo = 0
@@ -632,7 +600,7 @@ class PreMarshEnv(gymnasium.Env):
         destIntersection = np.intersect1d(self.objective, destSlabStack)
         
          # Obtém os índices dos valores não nulos em destSlabStack ENDERECO_VAZIO
-        indices_nao_nulos = np.nonzero(destSlabStack)[0]
+        indices_nao_nulos = np.where(destSlabStack != ENDERECO_VAZIO)[0]
 
         # Obtém os primeiros 'num_slabs' índices não nulos, exceto os valores 0 (ENDERECO_VAZIO)
         indices_selecionados = indices_nao_nulos[-num_slabs:][::-1]
@@ -645,7 +613,32 @@ class PreMarshEnv(gymnasium.Env):
 
         # Conta o número de placas movidas com objetivo (número de True)
         numero_de_placas_com_objetivo = np.count_nonzero(placas_movidas_com_objetivo) 
+
+        ####CALCULA COMPLETUDE PERCENTUAL
+        # Inicializa recompensas específicas para cada objetivo
+        reward_distancia = 0
+        for item in self.objective:
+            indices = np.where(arraystate == item)
+            listOfCoordinates = list(zip(indices[0], indices[1]))
+
+            for cord in listOfCoordinates:
+                reward_distancia += self.TamanhoPilha - self.distancia[item]
+            
+        valor_maximo = self.TamanhoPilha * len(self.objective)
+        porcentagem_completude = (reward_distancia / valor_maximo) * COMPLETUDE_PERCENTUAL #100
+        recompensa_completude = porcentagem_completude
+
+        ######CALCULA DELTA DO MOVIMENTO
+        # máscara booleana que identifica os valores np.inf
+        mascara_inf = np.isinf(self.pilhas_distancia_placas_do_objetivo)
+        mascara_inf_last = np.isinf(self.last_pilhas_distancia_placas_do_objetivo)
+        # Use a máscara para calcular a soma excluindo os valores np.inf
+        soma_distancia_atual = np.sum(self.pilhas_distancia_placas_do_objetivo[~mascara_inf])
+        soma_distancia_anterior = np.sum(self.last_pilhas_distancia_placas_do_objetivo[~mascara_inf_last])
         
+        delta += soma_distancia_anterior - soma_distancia_atual
+
+
         #se o movimento é de uma pilha SEM placa objetivo - OK
         if len(sourceIntersection) + len(destIntersection) <= 0:
             reward_movimento_util = MOVIMENTO_INUTIL
@@ -654,39 +647,28 @@ class PreMarshEnv(gymnasium.Env):
             len(sourceIntersection) > 0 and 
             (len(destIntersection) == 0 or  len(destIntersection) == numero_de_placas_com_objetivo) 
         ):
-            reward_movimento_util = num_slabs*PARTIAL_UNLOCK_GAME*GAMA
-            # Inicializa recompensas específicas para cada objetivo
-            # reward_distancia = 0
-            # for item in self.objective:
-            #     indices = np.where(arraystate == item)
-            #     listOfCoordinates = list(zip(indices[0], indices[1]))
-
-            #     for cord in listOfCoordinates:
-            #         reward_distancia += self.TamanhoPilha - self.distancia[item]
-                
-            # valor_maximo = self.TamanhoPilha * len(self.objective)
-            # porcentagem_completude = (reward_distancia / valor_maximo) * COMPLETUDE_PERCENTUAL #100
-            # recompensa_completude = porcentagem_completude
-        #se o movimento MOVER o objetivo para uma com objetivo - ok
-        #se o movimento for para um local COM objetivo para outra com Objetivo
-        #se o movimento é de colocar uma placa de uma pilha sem objetivo para uma com objetivo -OK 
+            #reward_movimento_util = num_slabs*PARTIAL_UNLOCK_GAME*GAMA
+            reward_movimento_util = recompensa_completude
+        #se o movimento MOVER O objetivo para uma com objetivo, deixando a origem vazia (sem objetivo) - ok
         elif (
-            (len(sourceIntersection) == 0 and numero_de_placas_com_objetivo > 0 and len(destIntersection) > numero_de_placas_com_objetivo) or 
-            (len(sourceIntersection) > 0 and (len(destIntersection) > 0 and numero_de_placas_com_objetivo > 0) ) or
-            (len(sourceIntersection) == 0 and numero_de_placas_com_objetivo == 0 and len(destIntersection) > 0)
+            (len(sourceIntersection) == 0 and numero_de_placas_com_objetivo > 0 and len(destIntersection) > numero_de_placas_com_objetivo) 
         ):
-            # máscara booleana que identifica os valores np.inf
-            mascara_inf = np.isinf(self.pilhas_distancia_placas_do_objetivo)
-            mascara_inf_last = np.isinf(self.last_pilhas_distancia_placas_do_objetivo)
-            # Use a máscara para calcular a soma excluindo os valores np.inf
-            soma_distancia_atual = np.sum(self.pilhas_distancia_placas_do_objetivo[~mascara_inf])
-            soma_distancia_anterior = np.sum(self.last_pilhas_distancia_placas_do_objetivo[~mascara_inf_last])
-            
-            delta += soma_distancia_anterior - soma_distancia_atual
             if delta < 0:
                 reward_movimento_util = delta* PARTIAL_UNLOCK_GAME*GAMA
             else:
                 reward_movimento_util = delta* PARTIAL_UNLOCK_GAME
+        #se o movimento for para um local COM objetivo para outra com Objetivo
+        #se o movimento é de colocar uma placa de uma pilha sem objetivo para uma com objetivo -OK 
+        elif (
+            (len(sourceIntersection) > 0 and (len(destIntersection) > 0 and numero_de_placas_com_objetivo > 0) ) or
+            (len(sourceIntersection) == 0 and numero_de_placas_com_objetivo == 0 and len(destIntersection) > 0)
+        ):
+            if delta < 0:
+                reward_movimento_util = delta* PARTIAL_UNLOCK_GAME*GAMA
+            else:
+                #reward_movimento_util = delta* PARTIAL_UNLOCK_GAME
+                reward_movimento_util = recompensa_completude
+                
         #se o movimento MOVER o objetivo para uma SEM objetivo, exceto ela propria - ok
         #se o movimento é desbloquear um objetivo para bloquear o outro - ok
         elif (
@@ -695,7 +677,7 @@ class PreMarshEnv(gymnasium.Env):
             ):
             reward_movimento_util = MOVIMENTO_INUTIL
         else:
-            recompensa_sequencia = -300
+            reward_movimento_util = -300
             print("Passou no -300")
 
         
@@ -707,152 +689,57 @@ class PreMarshEnv(gymnasium.Env):
         #recompensa_sequencia = self.quantidade_placas_do_objetivo_desbloqueadas * PARTIAL_UNLOCK_GAME
 
         # fora do loop calcula as recompensas adicionais
-        recompensa_total_objetivo += recompensa_completude
+        #recompensa_total_objetivo += recompensa_completude
         recompensa_total_objetivo += reward_movimento_util
         recompensa_total_objetivo += recompensa_sequencia
         recompensa_total_objetivo += self.current_step*STEP_COST
         reward_final = recompensa_total_objetivo
         
-        return reward_final
-        
-    def get_reward5(self, src_stack, dst_stack, num_slabs):
-        recompensa_total_objetivo = 0
-        arraystate = np.array(self.yard)
+        # print("Recompensa Completude:", recompensa_completude)
+        # print("Recompensa Movimento Util:", reward_movimento_util)
+        # print("Recompensa Sequência:", recompensa_sequencia)
+        # print("Recompensa Cost Step Atual:", self.current_step * STEP_COST)
+        # print("Recompensa Total Objetivo:", recompensa_total_objetivo)
 
-        sourceSlabStack = arraystate[src_stack]
-        destSlabStack = arraystate[dst_stack]
-
-        sourceIntersection = np.intersect1d(self.objective, sourceSlabStack)
-        destIntersection = np.intersect1d(self.objective, destSlabStack)
-
-        # máscara booleana que identifica os valores np.inf
-        mascara_inf = np.isinf(self.pilhas_distancia_placas_do_objetivo)
-        mascara_inf_last = np.isinf(self.last_pilhas_distancia_placas_do_objetivo)
-        # Use a máscara para calcular a soma excluindo os valores np.inf
-        soma_distancia_atual = np.sum(self.pilhas_distancia_placas_do_objetivo[~mascara_inf])
-        soma_distancia_anterior = np.sum(self.last_pilhas_distancia_placas_do_objetivo[~mascara_inf_last])
-        recompensa_total_objetivo += soma_distancia_anterior - soma_distancia_atual
-        
-        recompensa_sequencia = 0
-        
-        delta = self.last_quantidade_placas_do_objetivo_desbloqueadas - self.quantidade_placas_do_objetivo_desbloqueadas 
-        recompensa_sequencia = delta * PARTIAL_UNLOCK_GAME
-        recompensa_total_objetivo += recompensa_sequencia
-
-        reward_final = recompensa_total_objetivo
-        
         return reward_final
 
-    #pontua o movimento individualizado
-    def get_reward6(self, src_stack, dst_stack, num_slabs):
-        recompensa_total_objetivo = 0
-        delta = 0
-        # máscara booleana que identifica os valores np.inf
-        mascara_inf = np.isinf(self.pilhas_distancia_placas_do_objetivo)
-        mascara_inf_last = np.isinf(self.last_pilhas_distancia_placas_do_objetivo)
-        # Use a máscara para calcular a soma excluindo os valores np.inf
-        soma_distancia_atual = np.sum(self.pilhas_distancia_placas_do_objetivo[~mascara_inf])
-        soma_distancia_anterior = np.sum(self.last_pilhas_distancia_placas_do_objetivo[~mascara_inf_last])
-        delta += soma_distancia_anterior - soma_distancia_atual  
-        
-        if delta > 0:
-            recompensa_total_objetivo = 0
-        elif delta < 0:
-            recompensa_total_objetivo = 0
-        else:
-            recompensa_total_objetivo = 0
-            
-        delta =self.quantidade_placas_do_objetivo_desbloqueadas  - self.last_quantidade_placas_do_objetivo_desbloqueadas
-        
-        if delta > 0:
-            recompensa_total_objetivo += 1
-        elif delta < 0:
-            recompensa_total_objetivo += 0
-        else:
-            recompensa_total_objetivo += 0
 
-        reward_final = recompensa_total_objetivo
-        
-        return reward_final
-    
-    #só pontua caso de tudo certo
-    def get_reward7(self, src_stack, dst_stack, num_slabs):
-        recompensa_total_objetivo = 0
-        delta = 0
-        # máscara booleana que identifica os valores np.inf
-        mascara_inf = np.isinf(self.pilhas_distancia_placas_do_objetivo)
-        mascara_inf_last = np.isinf(self.last_pilhas_distancia_placas_do_objetivo)
-        # Use a máscara para calcular a soma excluindo os valores np.inf
-        soma_distancia_atual = np.sum(self.pilhas_distancia_placas_do_objetivo[~mascara_inf])
-        soma_distancia_anterior = np.sum(self.last_pilhas_distancia_placas_do_objetivo[~mascara_inf_last])
-        
-        delta += soma_distancia_anterior - soma_distancia_atual  
-        
-        recompensa_total_objetivo = delta*PARTIAL_UNLOCK_GAME
-
-        # if delta > 0:
-        #     recompensa_total_objetivo = 0.01
-        # elif delta < 0:
-        #     recompensa_total_objetivo = -0.01
-        # else:
-        #     recompensa_total_objetivo = 0
-            
-        delta =self.quantidade_placas_do_objetivo_desbloqueadas  - self.last_quantidade_placas_do_objetivo_desbloqueadas
-        recompensa_total_objetivo += delta*PARTIAL_UNLOCK_GAME
-
-        # if delta > 0:
-        #     recompensa_total_objetivo += 0.00
-        # elif delta < 0:
-        #     recompensa_total_objetivo += 0.00
-        # else:
-        #     recompensa_total_objetivo += 0
-
-        reward_final = recompensa_total_objetivo
-        
-        return reward_final
-
+    #pontua se desempilhar
     def get_reward8(self, src_stack, dst_stack, num_slabs):
         recompensa_total_objetivo = 0
-        recompensa_completude = 0
+        # Inicializa recompensa total
+        reward_final = 0
+        delta=0
+
         reward_movimento_util = 0
-        recompensa_quantidade_desbloqueio = 0
         arraystate = np.array(self.yard)
 
-        sourceSlabStack = arraystate[src_stack]
-        destSlabStack = arraystate[dst_stack]
-
-        sourceIntersection = np.intersect1d(self.objective, sourceSlabStack)
-        destIntersection = np.intersect1d(self.objective, destSlabStack)
-
-        if (len(sourceIntersection)) > 0:
-            reward_movimento_util = MOVIMENTO_UTIL
+        ######CALCULA DELTA DO MOVIMENTO
+        # máscara booleana que identifica os valores np.inf
+        mascara_inf = np.isinf(self.pilhas_distancia_placas_do_objetivo)
+        mascara_inf_last = np.isinf(self.last_pilhas_distancia_placas_do_objetivo)
+        # Use a máscara para calcular a soma excluindo os valores np.inf
+        soma_distancia_atual = np.sum(self.pilhas_distancia_placas_do_objetivo[~mascara_inf])
+        soma_distancia_anterior = np.sum(self.last_pilhas_distancia_placas_do_objetivo[~mascara_inf_last])
         
-            # Inicializa recompensa total
-            reward_final = 0
-            recompensa_completude = 0
-            for item in self.objective:
-                indices = np.where(arraystate == item)
-                listOfCoordinates = list(zip(indices[0], indices[1]))
+        delta += soma_distancia_anterior - soma_distancia_atual
 
-                # Inicializa recompensas específicas para cada objetivo
-                reward_distancia = 0
-
-                for cord in listOfCoordinates:
-                    reward_distancia += self.TamanhoPilha - self.distancia[item]
-                
-                valor_maximo = self.TamanhoPilha * len(self.objective)
-                porcentagem_completude = (reward_distancia / valor_maximo) * COMPLETUDE_PERCENTUAL #100
-                recompensa_completude += porcentagem_completude
-            
-            recompensa_quantidade_desbloqueio = self.quantidade_placas_do_objetivo_desbloqueadas*PARTIAL_UNLOCK_GAME
-            
-        # Calcula recompensa total para o objetivo atual
-           
-        # fora do loop calcula as recompensas adicionais
-        recompensa_total_objetivo += recompensa_completude
+        if delta < 0:
+            reward_movimento_util = 0
+        else:
+            reward_movimento_util = delta
+    
         recompensa_total_objetivo += reward_movimento_util
-        recompensa_total_objetivo += recompensa_quantidade_desbloqueio
+        recompensa_total_objetivo += self.current_step*STEP_COST
         reward_final = recompensa_total_objetivo
+        
+        # print("Recompensa Completude:", recompensa_completude)
+        # print("Recompensa Movimento Util:", reward_movimento_util)
+        # print("Recompensa Sequência:", recompensa_sequencia)
+        # print("Recompensa Cost Step Atual:", self.current_step * STEP_COST)
+        # print("Recompensa Total Objetivo:", recompensa_total_objetivo)
+
+
         return reward_final
 
     #calcula a pontuação por cada movimento seguindo a lógica:
@@ -899,15 +786,11 @@ class PreMarshEnv(gymnasium.Env):
     def defineObjetivo(self, objective):
         if len(objective) == 0:
             objective = []
-            #patio_plano = self.yard.flatten()
-            #self.np_random.shuffle(patio_plano)
             ids = self.np_random.choice(range(1,self.total_slabs), self.objective_size, replace=False)
             #ids = random.sample(range(1, self.total_slabs), self.objective_size)
             for i in range(self.objective_size):
                 slab = int(ids[i])
                 objective.append(slab)
-        # else:
-        #     self.objective_size = len(objective)
 
         return objective
 
@@ -926,15 +809,12 @@ class PreMarshEnv(gymnasium.Env):
                     incluido = False
                     
     def verificaObjetivo3(self):
-        #resultado = np.where(self.yard_distancia==int(1))
-        # resultado = np.where(self.objetivo_distancia==int(1))
-        # listOfCoordinates= list(zip(resultado[0], resultado[1]))
         all_ones = np.all(self.objetivo_distancia[:, 1] == int(0))
         if all_ones :
             return True
         else:
             return False
-    
+
         
 
     def remove_slab(self,address_stack):
@@ -1191,5 +1071,5 @@ class PreMarshEnv(gymnasium.Env):
                     array = pygame.surfarray.array3d(screen)
                     array = np.flip(array, axis=1)
                     return np.rot90(array, k=1)
-                print(self.distancia)
+                # print(self.distancia)
         return None
