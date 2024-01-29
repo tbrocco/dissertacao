@@ -9,7 +9,7 @@ from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.env_util import DummyVecEnv, SubprocVecEnv
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.callbacks import EvalCallback
-from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.monitor import Monitor 
 from gymnasium import spaces
 from pre_marsh_env import PreMarshEnv
 import torch.nn as nn
@@ -176,8 +176,8 @@ def treina(passos, tipo, env_p, file_path="C:/temporario/modeloIA/yard_model_"):
         model = DQN('MlpPolicy',env_p, 
                     #learning_rate=1e-3
                     #buffer_size=1048576, batch_size=32768,
-                    buffer_size=2048, batch_size=256, 
-                    learning_starts=1, train_freq=1, target_update_interval=1,
+                    buffer_size=4096, batch_size=512, 
+                    learning_starts=1, train_freq=8, target_update_interval=32,
                     exploration_fraction=0.7, exploration_final_eps=0.2, verbose=1,
                     device='cuda', tensorboard_log="./yard_tensorboard/"
                     )
@@ -190,7 +190,7 @@ def treina(passos, tipo, env_p, file_path="C:/temporario/modeloIA/yard_model_"):
         model = QRDQN("MultiInputPolicy", env_p, policy_kwargs=policy_kwargs, verbose=1 ,device='cuda', tensorboard_log="./yard_tensorboard/", target_update_interval=8, batch_size=256, buffer_size=131072)
         model.learn(total_timesteps=passos, log_interval=1, progress_bar=True, tb_log_name="QRDQN")
     elif tipo == "PPO":
-        custom_policy = CustomPolicy(env_p.observation_space, env_p.action_space, lr_schedule=linear_schedule(0.0003))
+        #custom_policy = CustomPolicy(env_p.observation_space, env_p.action_space, lr_schedule=linear_schedule(0.0003))
         # Definição da arquitetura da rede usando net_arch
         # net_arch = [{'pi': [env_p.observation_size, 64], 'vf': [env_p.action_space.n, 64]}]
         # net_arch = [{'pi': [env_p.observation_size, {'pi_fc0': 64, 'pi_fc1': 64}, 64, env_p.action_space.n], 'vf': [env_p.observation_size, {'vf_fc0': 64, 'vf_fc1': 64}, 64, 1]}]
@@ -213,11 +213,22 @@ def treina(passos, tipo, env_p, file_path="C:/temporario/modeloIA/yard_model_"):
         #                 "activation_fn":activation_functions_list
         #                 },
 
+        # Parâmetros
+        batch_size = 20480  # Tamanho do lote
+        n_steps = 16  # Número de passos para coletar antes de atualizar a política
+        ent_coef = 0.2  # Coeficiente de entropia para incentivar a exploração
+        gamma = 0.99  # Fator de desconto
+        learning_rate = 2.5e-4  # Taxa de aprendizado
+        clip_range = 0.2  # Limite para a razão de importância truncada (clipagem)
 
-        model = PPO("MultiInputPolicy", env_p, verbose=1
-                    , device="cuda", batch_size=1024,
+        model = PPO("MlpPolicy", env_p, verbose=1,
+                    ent_coef=ent_coef,
+                    gamma=gamma,
+                    # learning_rate=learning_rate,
+                    clip_range=clip_range,
+                    device="cuda", batch_size=batch_size,
                     n_epochs=64,
-                    n_steps=2048,
+                    n_steps=n_steps, #batch_size * num_epochs
                     tensorboard_log="./yard_tensorboard/")
         model.learn(total_timesteps=passos, progress_bar=True, tb_log_name="ppo")
     else:
@@ -354,30 +365,31 @@ def renderizaImagens(tipo, env_p,file_path):
     # Fecha o ambiente
     env_p.close()
 
-tipo = "dqn" #QRDQN #dqn #PPO                                                                 
+tipo = "PPO" #QRDQN #dqn #PPO                                                                 
 #default_occupancy=0.5
 num_stacks = 5
 stack_height = 5
-objective_size= 4
+objective_size= 3
 optimal_solution = ((int(stack_height/1)+stack_height) * objective_size)
 max_episode_steps = optimal_solution + 1
 max_episode_steps = 100
+total_timesteps = 50000
 discreeteAction=True
 
 # Parâmetros a serem passados para make_env
 env_params_list = [
     {
     'num_stacks': num_stacks, 'stack_height': stack_height,  'discreeteAction': discreeteAction, 'max_episode_steps': max_episode_steps, 'objective_size': objective_size, 'render_mode': 'console'
+    },
+    {
+     'num_stacks': num_stacks, 'stack_height': stack_height,  'discreeteAction': True, 'max_episode_steps': max_episode_steps, 'objective_size': objective_size, 'render_mode': 'console'
+    },
+    {
+    'num_stacks': num_stacks, 'stack_height': stack_height,  'discreeteAction': True, 'max_episode_steps': max_episode_steps, 'objective_size': objective_size, 'render_mode': 'console'
+    },
+    {
+    'num_stacks': num_stacks, 'stack_height': stack_height,  'discreeteAction': True, 'max_episode_steps': max_episode_steps, 'objective_size': objective_size, 'render_mode': 'console'
     }
-    # {
-    # 'num_stacks': num_stacks, 'stack_height': stack_height,  'discreeteAction': True, 'max_episode_steps': max_episode_steps, 'objective_size': objective_size, 'render_mode': 'console'
-    # }
-    # {
-    # 'num_stacks': num_stacks, 'stack_height': stack_height,  'discreeteAction': True, 'max_episode_steps': max_episode_steps, 'objective_size': objective_size, 'render_mode': 'console'
-    # },
-    # {
-    # 'num_stacks': num_stacks, 'stack_height': stack_height,  'discreeteAction': True, 'max_episode_steps': max_episode_steps, 'objective_size': objective_size, 'render_mode': 'console'
-    # }
 ]
 
 
@@ -396,7 +408,7 @@ envWrap = CustomWrapper(envOriginal)
 #vec_env = SubprocVecEnv([make_env(i) for i in range(8)])
 #vec_env = DummyVecEnv([lambda: Monitor(create_custom_env(env_params), "./yard_tensorboard") for env_params in env_params_list])
 
-treina(100000, tipo, env_p=envWrap, file_path=file_path)
+treina(total_timesteps, tipo, env_p=envWrap, file_path=file_path)
 
 
 #env = PreMarshEnv(num_stacks=num_stacks, stack_height=stack_height, discreeteAction=discreeteAction, max_episode_steps=max_episode_steps, objective_size=objective_size, render_mode='console')

@@ -8,8 +8,8 @@ import pygame
 #from PIL import Image,ImageShow
 
 GAMA = 1
-STEP_REWARD = 3.5
-STEP_COST = -0.0001
+STEP_REWARD = 5 #3*50
+STEP_COST = -0.01
 MOVIMENTO_UTIL = 0.0
 MOVIMENTO_INUTIL = 0.0
 COMPLETUDE_PERCENTUAL = 1
@@ -18,8 +18,8 @@ PARTIAL_UNLOCK_GAME = 0.1
 INVALID_MOVE = -1000
 INVALID_MOVE_21 = -1
 INVALID_MOVE_22 = -1
-INVALID_MOVE_3 = -1
-WIN_GAME = 100
+INVALID_MOVE_3 = -0.5
+WIN_GAME = 1000# 250 #50*150
 ENDERECO_VAZIO = 0
 ENDERECO_OCUPADO = 1
 
@@ -56,7 +56,7 @@ class PreMarshEnv(gymnasium.Env):
         self.objective=[]
         self.moves = np.full(self.max_episode_steps, -np.inf, dtype=float)
         self.lastmove = (0,0,0)
-        self.lastaction=-np.inf
+        self.lastaction=-1
         self.dones = 0
         self.num_resets = -1
         self.total_slabs = 0
@@ -143,11 +143,12 @@ class PreMarshEnv(gymnasium.Env):
         #'objetivo-localizacao' : spaces.Box(low=1, high=self.TamanhoPilha, shape=(self.objective_size,2), dtype=np.int32), #localização
         #'objetivo-distancia' : spaces.Box(low=1, high=self.TamanhoPilha, shape=(self.objective_size,), dtype=np.int32), #distancia
         'objetivo-distancia' : spaces.Box(low=0, high=self.TamanhoPilha, shape=(self.objective_size,2), dtype=np.int32), #distancia
-        'steps' : spaces.Box(low=0, high=self.max_episode_steps, shape=(1,), dtype=np.int32) #passos
-        #'max_steps' : spaces.Box(low=0, high=self.max_episode_steps, shape=(1,), dtype=np.int32), #maximo de passos
-        #'TamanhoPatio' : spaces.Box(low=0, high=self.TamanhoPatio, shape=(1,), dtype=np.int32), #tamanho do patio
-        #'TamanhoPilha' : spaces.Box(low=0, high=self.TamanhoPilha, shape=(1,), dtype=np.int32), #tamanho da pilha
-        #'moves' : spaces.Box(low=-1, high=discreteAction_max, shape=(1,), dtype=float) #tamanho da pilha
+        'steps' : spaces.Box(low=0, high=self.max_episode_steps, shape=(1,), dtype=np.int32), #passos
+        'max_steps' : spaces.Box(low=0, high=self.max_episode_steps, shape=(1,), dtype=np.int32), #maximo de passos
+        # #'TamanhoPatio' : spaces.Box(low=0, high=self.TamanhoPatio, shape=(1,), dtype=np.int32), #tamanho do patio
+        # #'TamanhoPilha' : spaces.Box(low=0, high=self.TamanhoPilha, shape=(1,), dtype=np.int32), #tamanho da pilha
+        # 'moves' : spaces.Box(low=-1, high=discreteAction_max, shape=(1,), dtype=float), #tamanho da pilha
+        'total_slabs' : spaces.Box(low=0, high=self.total_slabs_max, shape=(1,), dtype=np.int32)
         }
         self.observation_space = spaces.Dict(espaco_obs)
         
@@ -155,7 +156,8 @@ class PreMarshEnv(gymnasium.Env):
         self.observation_size = self.get_space_size(self.observation_space)
 
         #self.reward_maximo = COMPLETUDE_PERCENTUAL+WIN_GAME+PARTIAL_WIN_GAME+self.max_episode_steps*STEP_REWARD+self.max_episode_steps*MOVIMENTO_UTIL+GAMA*self.max_episode_steps+self.quantidade_placas_do_objetivo_desbloqueadas*PARTIAL_UNLOCK_GAME
-        self.reward_maximo = self.max_episode_steps*COMPLETUDE_PERCENTUAL+WIN_GAME+self.max_episode_steps*GAMA+self.max_episode_steps*PARTIAL_UNLOCK_GAME
+        #self.reward_maximo = self.max_episode_steps*COMPLETUDE_PERCENTUAL+WIN_GAME+self.max_episode_steps*GAMA+self.max_episode_steps*PARTIAL_UNLOCK_GAME
+        self.reward_maximo = WIN_GAME+3
         self.reward_range = (INVALID_MOVE_21+INVALID_MOVE_22, self.reward_maximo) 
         
     
@@ -176,7 +178,7 @@ class PreMarshEnv(gymnasium.Env):
                 self.reward = reward = INVALID_MOVE
                 self.state = observation = self._get_obs()
                 terminated = False
-                truncated = False
+                truncated = True
                 info = {}
                 if truncated == True:
                     info["TimeLimit.truncated"] = True
@@ -213,15 +215,15 @@ class PreMarshEnv(gymnasium.Env):
                 reward_ajustado += delta
                 if (valido2_destino == True and valido2_origem == True):
                     #verifica se a ação não é imediatamente oposta a anterior (vulgo ctrl+z) 
-                    # if self.valida3(src_stack, dst_stack, num_slabs) == False:
-                    #     truncated = False
-                    #     self.reward = INVALID_MOVE_3
+                    if self.valida3(src_stack, dst_stack, num_slabs) == False:
+                        truncated = False
+                        self.reward = INVALID_MOVE_3
                     self.makeMove(src_stack, dst_stack, num_slabs)
                     self.localizacao, self.distancia, self.localizacao_posicao_pilhas = self.atualizaProximidadeTopoNoObjetivo()
-                    #if self.reward != INVALID_MOVE_3: #descomentar se for usar a logica
-                    self.reward += self.get_reward8(src_stack, dst_stack, num_slabs)
+                    if self.reward != INVALID_MOVE_3: #descomentar se for usar a logica
+                        self.reward += self.get_reward(src_stack, dst_stack, num_slabs)
                 else:
-                    truncated = False
+                    truncated = True
                     if not valido2_origem:
                         self.reward += INVALID_MOVE_21
                     elif not valido2_destino:
@@ -236,19 +238,21 @@ class PreMarshEnv(gymnasium.Env):
         self.last_quantidade_placas_do_objetivo_desbloqueadas = self.quantidade_placas_do_objetivo_desbloqueadas
 
         win = self.verificaObjetivo3()
-        
+        ultimo_passo = self._check_if_maxsteps()
         if win:
-            ultimo_passo = self._check_if_maxsteps()
-            if not ultimo_passo:
-                recompensa_descontada = (self.max_episode_steps - self.current_step)
-                self.reward += recompensa_descontada*STEP_REWARD
-            self.reward += WIN_GAME 
+            # ultimo_passo = self._check_if_maxsteps()
+            # if not ultimo_passo:
+            #     recompensa_descontada = (self.max_episode_steps - self.current_step)
+            #     self.reward += recompensa_descontada*STEP_REWARD
+            self.reward += WIN_GAME/self.current_step 
+            #self.reward += WIN_GAME-(self.current_step*STEP_REWARD)
             self.dones += 1
             terminated = True
-        ultimo_passo = self._check_if_maxsteps()
-        if ultimo_passo:
-           terminated = True
-           truncated = False
+            truncated = False
+        else:
+            if ultimo_passo:
+               terminated = False
+               truncated = True
 
         info = {}
         if truncated == True:
@@ -324,11 +328,12 @@ class PreMarshEnv(gymnasium.Env):
             #'objetivo-desbloqueadas' : self.quantidade_placas_do_objetivo_desbloqueadas
             #'objetivo-localizacao' : self.localizacao, #localização
             'objetivo-distancia' : np.array(self.objetivo_distancia, dtype=int), #distancia , [:,1]
-            'steps' : self.current_step #passos
-            #'max_steps' : self.max_episode_steps, #maximo de passos
-            #'TamanhoPatio' : self.TamanhoPatio, #tamanho do patio
-            #'TamanhoPilha' : self.TamanhoPilha, #tamanho da pilha
-            #'moves' : self.lastaction #movimentos
+            'steps' : self.current_step, #passos
+            'max_steps' : self.max_episode_steps, #maximo de passos
+            # #'TamanhoPatio' : self.TamanhoPatio, #tamanho do patio
+            # #'TamanhoPilha' : self.TamanhoPilha, #tamanho da pilha
+            # 'moves' : self.lastaction, #movimentos,
+             'total_slabs' : np.array(self.total_slabs) #movimentos
         }
         self.state = spaco_obs
         
@@ -374,10 +379,11 @@ class PreMarshEnv(gymnasium.Env):
                 #[observation['objetivo-desbloqueadas']]
                 observation["objetivo-distancia"],
                 [observation["steps"]], 
-                #[observation["max_steps"]], 
+                [observation["max_steps"]], 
                 #[observation["TamanhoPatio"]], 
                 #[observation["TamanhoPilha"]],
-                #[observation["moves"]]
+                #[observation["moves"]],
+                [observation["total_slabs"]]
                 ])
     
     def stateDictToArray(self, state):
@@ -398,10 +404,11 @@ class PreMarshEnv(gymnasium.Env):
                 #state["objetivo-distancia"]
                 state["objetivo-distancia"].reshape(-1),
                 [state["steps"]], 
-                #[state["max_steps"]], 
+                [state["max_steps"]], 
                 #[state["TamanhoPatio"]], 
                 #[state["TamanhoPilha"]],
-                #[state["moves"]]
+                #[state["moves"]],
+                [state["total_slabs"]]
                 ])
     
     #validacao basica que provavelmente so ocorrera erro quando for ambiente iterativo, pois o automatico possui os limites corretos.
@@ -455,7 +462,7 @@ class PreMarshEnv(gymnasium.Env):
         
 
     def reset(self, options=None, occupancy=None,objective=[], seed=None):
-        self.stored_seed = seed = self.generate_seed()
+        self.stored_seed = seed #= self.generate_seed()
                 
         super().reset(seed=seed)
         
@@ -473,7 +480,7 @@ class PreMarshEnv(gymnasium.Env):
         self.current_step = 0
         self.num_resets += 1
         self.lastmove = (0,0,0)
-        self.lastaction=-np.inf
+        self.lastaction=-1
 
         # Define a taxa de ocupação (usa o padrão se não for especificado)
         if occupancy is None:
@@ -700,6 +707,34 @@ class PreMarshEnv(gymnasium.Env):
 
         return reward_final
 
+    def get_reward(self, src_stack, dst_stack, num_slabs):
+        ######CALCULA DELTA DO MOVIMENTO
+        # máscara booleana que identifica os valores np.inf
+        mascara_inf = np.isinf(self.pilhas_distancia_placas_do_objetivo)
+        mascara_inf_last = np.isinf(self.last_pilhas_distancia_placas_do_objetivo)
+        # Use a máscara para calcular a soma excluindo os valores np.inf
+        soma_distancia_atual = np.sum(self.pilhas_distancia_placas_do_objetivo[~mascara_inf])
+        soma_distancia_anterior = np.sum(self.last_pilhas_distancia_placas_do_objetivo[~mascara_inf_last])
+
+        # Calcula a distância ao objetivo nos estados atual e anterior
+        delta = soma_distancia_anterior - soma_distancia_atual
+
+        # Recompensa por redução na distância até o objetivo
+        progress_reward = max(0, delta*0.1)
+        # if delta < 0:
+        #     progress_reward = max(-0.3, (delta*0.1))
+        # else:
+        #     progress_reward = delta
+
+        # Penalidade por estagnação (ficar no mesmo local)
+        stagnation_penalty = -0.01 if progress_reward == 0 else 0
+
+        time_penalty = self.current_step*STEP_COST
+
+        # Combina as recompensas
+        total_reward = progress_reward + stagnation_penalty + time_penalty
+
+        return total_reward
 
     #pontua se desempilhar
     def get_reward8(self, src_stack, dst_stack, num_slabs):
@@ -709,7 +744,6 @@ class PreMarshEnv(gymnasium.Env):
         delta=0
 
         reward_movimento_util = 0
-        arraystate = np.array(self.yard)
 
         ######CALCULA DELTA DO MOVIMENTO
         # máscara booleana que identifica os valores np.inf
